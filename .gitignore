@@ -3,3 +3,5 @@ node_modules/
 .env
 brain-space-chat.zip
 .cursorignore 
+Dockerfile
+.dockerignore

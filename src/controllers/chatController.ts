@@ -88,7 +88,7 @@ export async function sendMessage(req: Request, res: Response) {
   try {
     // @ts-ignore
     const userId = req.user.id;
-    const { conversationId } = req.params;
+    let { conversationId } = req.params;
     const { message, receiver_id, message_type } = req.body;
     let file_url = null, file_name = null, file_extension = null, file_size = null;
     if (req.file) {
@@ -96,6 +96,30 @@ export async function sendMessage(req: Request, res: Response) {
       file_name = req.file.originalname;
       file_extension = req.file.originalname.split('.').pop();
       file_size = req.file.size.toString();
+    }
+    let conversation;
+    // If conversationId is not provided or invalid, find or create a conversation
+    if (!conversationId || conversationId === 'undefined' || conversationId === 'null') {
+      conversation = await ChatConversation.findOne({
+        where: {
+          [Op.or]: [
+            { user_one: userId, user_two: receiver_id },
+            { user_one: receiver_id, user_two: userId }
+          ]
+        }
+      });
+      if (!conversation) {
+        conversation = await ChatConversation.create({
+          user_one: userId,
+          user_two: receiver_id
+        });
+      }
+      conversationId = conversation.id.toString();
+    } else {
+      conversation = await ChatConversation.findByPk(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: 'Conversation not found' });
+      }
     }
     const msg = await ChatMessage.create({
       conversation_id: conversationId,

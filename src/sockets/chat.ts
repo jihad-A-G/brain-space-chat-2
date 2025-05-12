@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { ChatMessage } from '../models/ChatMessage';
 import { User } from '../models/User';
 import { ChatConversation } from '../models/ChatConversation';
+import { Op } from 'sequelize';
 
 const onlineUsers = new Map<string, string>(); 
 const messageTimestamps = new Map<string, number[]>(); 
@@ -29,7 +30,7 @@ export function chatSocket(io: Server) {
 
     // Send message with rate limiting
     socket.on('send_message', async (data) => {
-      const { sender_id } = data;
+      const { sender_id, receiver_id } = data;
       const now = Date.now();
       const times = messageTimestamps.get(sender_id) || [];
       // Remove timestamps older than 2 seconds
@@ -40,6 +41,35 @@ export function chatSocket(io: Server) {
       }
       recent.push(now);
       messageTimestamps.set(sender_id, recent);
+
+      // Find or create conversation
+      let conversationId = data.conversation_id;
+      let conversation;
+      if (!conversationId || conversationId === 'undefined' || conversationId === 'null') {
+        conversation = await ChatConversation.findOne({
+          where: {
+            [Op.or]: [
+              { user_one: sender_id, user_two: receiver_id },
+              { user_one: receiver_id, user_two: sender_id }
+            ]
+          }
+        });
+        if (!conversation) {
+          conversation = await ChatConversation.create({
+            user_one: sender_id,
+            user_two: receiver_id
+          });
+        }
+        conversationId = conversation.id.toString();
+        data.conversation_id = conversationId;
+      } else {
+        conversation = await ChatConversation.findByPk(conversationId);
+        if (!conversation) {
+          socket.emit('error', { message: 'Conversation not found' });
+          return;
+        }
+      }
+
       // Save to DB, then emit to room
       const msg = await ChatMessage.create(data);
       const fullMsg = await ChatMessage.findByPk(msg.id, {
