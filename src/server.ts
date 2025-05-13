@@ -9,7 +9,6 @@ import './models/ChatConversation';
 import './models/ChatMessage';
 import './models/ChatBlockedUser';
 import './models/ChatDeletedMessage';
-import jwt from 'jsonwebtoken';
 import { chatSocket } from './sockets/chat';
 import userRoutes from './routes/user';
 import chatRoutes from './routes/chat';
@@ -33,11 +32,10 @@ app.get('/health', (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/chats', chatRoutes);
 
-
-setupAssociations();
-
-sequelize.sync()
-  .then(() => {
+(async () => {
+  try {
+    setupAssociations();
+    await sequelize.sync();
     console.log('Database synced');
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
@@ -47,19 +45,19 @@ sequelize.sync()
     });
 
     // JWT auth middleware for Socket.IO
-    io.use((socket, next) => {
-      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-      if (!token) {
-        return next(new Error('Authentication error: No token provided'));
-      }
-      try {
-        const payload = jwt.verify(token, JWT_SECRET);
-        socket.data.user = payload;
-        next();
-      } catch (err) {
-        next(new Error('Authentication error: Invalid token'));
-      }
-    });
+    // io.use((socket, next) => {
+    //   const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    //   if (!token) {
+    //     return next(new Error('Authentication error: No token provided'));
+    //   }
+    //   try {
+    //     const payload = jwt.verify(token, JWT_SECRET);
+    //     socket.data.user = payload;
+    //     next();
+    //   } catch (err) {
+    //     next(new Error('Authentication error: Invalid token'));
+    //   }
+    // });
 
     // Pass io to chatSocket for event handling
     chatSocket(io);
@@ -68,7 +66,7 @@ sequelize.sync()
       console.log(`Server listening on port ${PORT}`);
     });
     module.exports.io = io;
-  })
-  .catch((err) => {
+  } catch (err) {
     console.error('DB sync error:', err);
-  }); 
+  }
+})(); 

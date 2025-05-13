@@ -9,13 +9,18 @@ const messageTimestamps = new Map<string, number[]>();
 
 export function chatSocket(io: Server) {
   io.on('connection', (socket: Socket) => {
+    console.log(`Socket connected: ${socket.id}`);
     // Join all rooms for this user
     socket.on('join', async ({ userId, conversationIds }) => {
       if (!userId) return;
       onlineUsers.set(userId, socket.id);
       if (Array.isArray(conversationIds)) {
-        conversationIds.forEach((cid) => socket.join(`conversation_${cid}`));
+        conversationIds.forEach((cid) => {
+          socket.join(`conversation_${cid}`);
+          console.log(`User ${userId} joined room conversation_${cid}`);
+        });
       }
+      console.log(`User ${userId} joined. Socket: ${socket.id}`);
       // Notify contacts this user is online
       socket.broadcast.emit('user_online', { userId });
     });
@@ -31,6 +36,7 @@ export function chatSocket(io: Server) {
     // Send message with rate limiting
     socket.on('send_message', async (data) => {
       const { sender_id, receiver_id } = data;
+      console.log(`User ${sender_id} is sending a message to ${receiver_id}`);
       const now = Date.now();
       const times = messageTimestamps.get(sender_id) || [];
       // Remove timestamps older than 2 seconds
@@ -59,6 +65,7 @@ export function chatSocket(io: Server) {
             user_one: sender_id,
             user_two: receiver_id
           });
+          console.log(`Created new conversation between ${sender_id} and ${receiver_id}`);
         }
         conversationId = conversation.id.toString();
         data.conversation_id = conversationId;
@@ -79,6 +86,7 @@ export function chatSocket(io: Server) {
         ],
       });
       io.to(`conversation_${data.conversation_id}`).emit('new_message', fullMsg);
+      console.log(`Message sent in conversation_${data.conversation_id} by user ${sender_id}`);
     });
 
     // Edit message
@@ -134,6 +142,7 @@ export function chatSocket(io: Server) {
           // Update last_seen in DB
           await User.update({ last_seen: new Date() }, { where: { id: userId } });
           socket.broadcast.emit('user_offline', { userId, last_seen: new Date() });
+          console.log(`User ${userId} disconnected. Socket: ${socket.id}`);
           break;
         }
       }
