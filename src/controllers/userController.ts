@@ -31,6 +31,7 @@ export async function getJwt(req: Request, res: Response) {
       process.env.JWT_SECRET as string,
       { expiresIn: '2h' }
     );
+    
     res.json({ token });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';

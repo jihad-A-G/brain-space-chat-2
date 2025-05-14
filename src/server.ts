@@ -13,7 +13,8 @@ import { chatSocket } from './sockets/chat';
 import userRoutes from './routes/user';
 import chatRoutes from './routes/chat';
 import dotenv from 'dotenv';
-
+import { authenticateJWT } from './middlewares/auth';
+import jwt from 'jsonwebtoken';
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
@@ -29,8 +30,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.use(authenticateJWT);
 app.use('/api/users', userRoutes);
 app.use('/api/chats', chatRoutes);
+
+let ioInstance: SocketIOServer | null = null;
 
 (async () => {
   try {
@@ -43,21 +47,22 @@ app.use('/api/chats', chatRoutes);
         origin: '*',
       },
     });
+    ioInstance = io;
 
     // JWT auth middleware for Socket.IO
-    // io.use((socket, next) => {
-    //   const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    //   if (!token) {
-    //     return next(new Error('Authentication error: No token provided'));
-    //   }
-    //   try {
-    //     const payload = jwt.verify(token, JWT_SECRET);
-    //     socket.data.user = payload;
-    //     next();
-    //   } catch (err) {
-    //     next(new Error('Authentication error: Invalid token'));
-    //   }
-    // });
+    io.use((socket, next) => {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) {
+        return next(new Error('Authentication error: No token provided'));
+      }
+      try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        socket.data.user = payload;
+        next();
+      } catch (err) {
+        next(new Error('Authentication error: Invalid token'));
+      }
+    });
 
     // Pass io to chatSocket for event handling
     chatSocket(io);
@@ -65,8 +70,12 @@ app.use('/api/chats', chatRoutes);
     server.listen(PORT, () => {
       console.log(`Server listening on port ${PORT}`);
     });
-    module.exports.io = io;
   } catch (err) {
     console.error('DB sync error:', err);
   }
-})(); 
+})();
+
+export function getIO() {
+  if (!ioInstance) throw new Error('Socket.IO not initialized yet');
+  return ioInstance;
+} 

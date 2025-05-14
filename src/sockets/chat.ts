@@ -147,5 +147,23 @@ export function chatSocket(io: Server) {
         }
       }
     });
+
+    // Change user status
+    socket.on('change_status', async ({ userId, status }) => {
+      const ALLOWED_STATUSES = ['online', 'busy', 'offline', 'away'];
+      if (!ALLOWED_STATUSES.includes(status)) {
+        socket.emit('error', { message: 'Invalid status' });
+        return;
+      }
+      const user = await User.findByPk(userId);
+      if (!user) {
+        socket.emit('error', { message: 'User not found' });
+        return;
+      }
+      user.status = status;
+      await user.save();
+      io.emit('user_status_changed', { userId, status });
+      console.log(`User ${userId} changed status to ${status} (via socket)`);
+    });
   });
 } 

@@ -3,6 +3,7 @@ import { ChatConversation } from '../models/ChatConversation';
 import { ChatMessage } from '../models/ChatMessage';
 import { User } from '../models/User';
 import { Op } from 'sequelize';
+import { getIO } from '../server';
 
 // Fetch all chats for the user, sorted by last message
 export async function fetchChats(req: Request, res: Response) {
@@ -35,6 +36,10 @@ export async function fetchChats(req: Request, res: Response) {
         },
       ],
     });
+
+    if( conversations.length === 0 ) {
+      return res.status(404).json({ message: 'No conversations found' });
+    }
     // Sort by last message createdAt desc
     const sorted = conversations.sort((a: any, b: any) => {
       const aMsg = a.ChatMessages[0];
@@ -140,6 +145,8 @@ export async function sendMessage(req: Request, res: Response) {
         { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
       ],
     });
+    // Emit socket event for new message
+    getIO().to(`conversation_${conversationId}`).emit('new_message', fullMsg);
     res.status(201).json(fullMsg);
   } catch (err) {
     res.status(500).json({ message: 'Error sending message', error: err });
@@ -165,6 +172,8 @@ export async function editMessage(req: Request, res: Response) {
         { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
       ],
     });
+    // Emit socket event for message edited
+    getIO().to(`conversation_${msg.conversation_id}`).emit('message_edited', { messageId, message });
     res.json(fullMsg);
   } catch (err) {
     res.status(500).json({ message: 'Error editing message', error: err });
@@ -182,6 +191,8 @@ export async function deleteMessage(req: Request, res: Response) {
     // If sender deletes and receiver hasn't read, delete from DB
     if (msg.sender_id === userId && !msg.is_read) {
       await msg.destroy();
+      // Emit socket event for message deleted (both sides)
+      getIO().to(`conversation_${msg.conversation_id}`).emit('message_deleted', { messageId, both: true });
       return res.json({ message: 'Message deleted for both sides' });
     }
     // Otherwise, add user to deleted_by
@@ -189,13 +200,13 @@ export async function deleteMessage(req: Request, res: Response) {
       msg.deleted_by = [...msg.deleted_by, userId];
       await msg.save();
     }
+    // Emit socket event for message deleted (one side)
+    getIO().to(`conversation_${msg.conversation_id}`).emit('message_deleted', { messageId, both: false, userId });
     res.json({ message: 'Message deleted from your side' });
   } catch (err) {
     res.status(500).json({ message: 'Error deleting message', error: err });
   }
 }
-
-
 
 // Delete all chat messages from user's side
 export async function deleteChatMessages(req: Request, res: Response) {
@@ -240,6 +251,8 @@ export async function changeStatus(req: Request, res: Response) {
     if (!user) return res.status(404).json({ message: 'User not found' });
     user.status = status;
     await user.save();
+    // Emit socket event for status change
+    getIO().emit('user_status_changed', { userId, status });
     res.json({ message: 'Status updated', user });
   } catch (err) {
     res.status(500).json({ message: 'Error updating status', error: err });
@@ -270,6 +283,11 @@ export async function bulkMarkAsRead(req: Request, res: Response) {
         is_read: true,
       },
     });
+    // Emit socket event for each message read
+    const io = getIO();
+    for (const msg of updatedMessages) {
+      io.to(`conversation_${conversationId}`).emit('message_read', { messageId: msg.id, userId });
+    }
     res.json({ success: true, updatedMessages });
   } catch (err) {
     res.status(500).json({ message: 'Error marking messages as read', error: err });

@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
 }
 
 export function authenticateJWT(req: AuthRequest, res: Response, next: NextFunction) {
+  console.log('authenticateJWT', req.path);
   // Skip auth for /api/users/jwt
   if (req.path === '/api/users/jwt') {
     return next();
