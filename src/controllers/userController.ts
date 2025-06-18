@@ -2,11 +2,18 @@ import { Request, Response } from 'express';
 import {User} from '../models/User';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import { Op } from 'sequelize';
 
 dotenv.config();
 
 export async function getUsers(req: Request, res: Response) {
-  const users = await User.findAll();
+  // @ts-ignore
+  const currentUserId = req.user.id;
+  const users = await User.findAll({
+    where: {
+      id: { [Op.ne]: currentUserId }
+    }
+  });
   res.json(users);
 }
 
@@ -29,7 +36,7 @@ export async function getJwt(req: Request, res: Response) {
         role: user.role,
       },
       process.env.JWT_SECRET as string,
-      { expiresIn: '2h' }
+      { expiresIn: '7d' }
     );
     
     res.json({ token });

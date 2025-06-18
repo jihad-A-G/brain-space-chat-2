@@ -34,7 +34,7 @@ ChatBlockedUser.init(
   {
     sequelize,
     modelName: 'ChatBlockedUser',
-    tableName: 'chat_blocked_users',
+    tableName: 'ChatBlockedUsers',
     timestamps: true,
   }
 ); 

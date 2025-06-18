@@ -8,9 +8,8 @@ export interface AuthRequest extends Request {
 }
 
 export function authenticateJWT(req: AuthRequest, res: Response, next: NextFunction) {
-  console.log('authenticateJWT', req.path);
   // Skip auth for /api/users/jwt
-  if (req.path === '/api/users/jwt') {
+  if (req.path.includes('/api/users/jwt')) {
     return next();
   }
   const authHeader = req.headers.authorization;
@@ -21,6 +20,8 @@ export function authenticateJWT(req: AuthRequest, res: Response, next: NextFunct
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
+    console.log('req.user.id: ', req.user.id);
+    
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Invalid token' });

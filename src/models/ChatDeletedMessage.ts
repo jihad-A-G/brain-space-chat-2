@@ -34,7 +34,7 @@ ChatDeletedMessage.init(
   {
     sequelize,
     modelName: 'ChatDeletedMessage',
-    tableName: 'chat_deleted_messages',
+    tableName: 'ChatDeletedMessages',
     timestamps: false,
   }
 ); 

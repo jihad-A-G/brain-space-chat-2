@@ -4,7 +4,7 @@ import sequelize from '../config/db-connection';
 export type Gender = 'Male' | 'Female';
 
 interface UserAttributes {
-  id: string;
+  id: number;
   name: string;
   user_name: string;
   password: string;
@@ -25,7 +25,7 @@ interface UserAttributes {
 interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'main_image' | 'secret_key' | 'last_seen' | 'status'> {}
 
 export class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
-  public id!: string;
+  public id!: number;
   public name!: string;
   public user_name!: string;
   public password!: string;
@@ -41,13 +41,13 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   public language_id!: number;
   public last_seen?: Date | null;
   public status?: string | null;
-}
-
+} 
+ 
 User.init(
   {
     id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
       primaryKey: true,
     },
     name: {
@@ -117,5 +117,5 @@ User.init(
     modelName: 'User',
     tableName: 'users',
     timestamps: false,
-  }
+  } 
 ); 

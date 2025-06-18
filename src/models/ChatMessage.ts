@@ -5,7 +5,7 @@ export type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio';
 
 interface ChatMessageAttributes {
   id: string;
-  conversation_id: string;
+  conversation_id: number;
   sender_id: string;
   receiver_id: string;
   message: string;
@@ -24,7 +24,7 @@ interface ChatMessageCreationAttributes extends Optional<ChatMessageAttributes, 
 
 export class ChatMessage extends Model<ChatMessageAttributes, ChatMessageCreationAttributes> implements ChatMessageAttributes {
   public id!: string;
-  public conversation_id!: string;
+  public conversation_id!: number;
   public sender_id!: string;
   public receiver_id!: string;
   public message!: string;
@@ -94,7 +94,7 @@ ChatMessage.init(
   {
     sequelize,
     modelName: 'ChatMessage',
-    tableName: 'chat_messages',
+    tableName: 'ChatMessages',
     timestamps: true,
   }
 ); 

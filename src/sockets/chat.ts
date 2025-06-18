@@ -4,16 +4,41 @@ import { User } from '../models/User';
 import { ChatConversation } from '../models/ChatConversation';
 import { Op } from 'sequelize';
 
-const onlineUsers = new Map<string, string>(); 
+const onlineUsers = new Map<string, Set<string>>();
 const messageTimestamps = new Map<string, number[]>(); 
 
+
 export function chatSocket(io: Server) {
-  io.on('connection', (socket: Socket) => {
+  io.on('connection', async (socket: Socket) => {
+    const userId = socket.data.user.id;
+    let userSockets = onlineUsers.get(userId);
+    let isFirstConnection = false;
+    if (!userSockets) {
+      userSockets = new Set();
+      onlineUsers.set(userId, userSockets);
+      isFirstConnection = true;
+    }
+    userSockets.add(socket.id);
+
+    // Ensure user joins their own user-specific room for notifications
+    socket.join(`user_${userId}`);
+    console.log(`User ${userId} joined room user_${userId}`);
+    socket.join(`role_${socket.data.user.role}`);
+    console.log(`User ${userId} joined room role_${socket.data.user.role}`);
+
+    if (isFirstConnection) {
+      // Mark user as online in DB
+      await User.update(
+        { status: 'Online', last_seen: null },
+        { where: { id: userId } }
+      );
+      socket.broadcast.emit('user_online', { userId });
+      io.emit('user_status_changed', { userId, status: 'Online' });
+    }
+
     console.log(`Socket connected: ${socket.id}`);
     // Join all rooms for this user
-    socket.on('join', async ({ userId, conversationIds }) => {
-      if (!userId) return;
-      onlineUsers.set(userId, socket.id);
+    socket.on('join', async ({ conversationIds }) => {
       if (Array.isArray(conversationIds)) {
         conversationIds.forEach((cid) => {
           socket.join(`conversation_${cid}`);
@@ -21,8 +46,6 @@ export function chatSocket(io: Server) {
         });
       }
       console.log(`User ${userId} joined. Socket: ${socket.id}`);
-      // Notify contacts this user is online
-      socket.broadcast.emit('user_online', { userId });
     });
 
     // Typing indicator
@@ -34,24 +57,27 @@ export function chatSocket(io: Server) {
     });
 
     // Send message with rate limiting
-    socket.on('send_message', async (data) => {
-      const { sender_id, receiver_id } = data;
-      console.log(`User ${sender_id} is sending a message to ${receiver_id}`);
-      const now = Date.now();
-      const times = messageTimestamps.get(sender_id) || [];
-      // Remove timestamps older than 2 seconds
-      const recent = times.filter((t) => now - t < 2000);
-      if (recent.length >= 5) {
-        socket.emit('rate_limited', { message: 'Too many messages, slow down.' });
-        return;
-      }
-      recent.push(now);
-      messageTimestamps.set(sender_id, recent);
+    socket.on('send_message', async (data, callback) => {
+      console.log('send_message', data);
+      try {
+        const sender_id = socket.data.user.id;
+        const { receiver_id, message, message_type, file_url, file_name, file_extension, file_size, tempId } = data;
+        // Only accept file_url, file_name, file_extension, file_size if already uploaded via REST
+        const now = Date.now();
+        const times = messageTimestamps.get(sender_id) || [];
+        // Remove timestamps older than 2 seconds
+        const recent = times.filter((t) => now - t < 2000);
+        if (recent.length >= 5) {
+          socket.emit('rate_limited', { message: 'Too many messages, slow down.' });
+          return;
+        }
+        recent.push(now);
+        messageTimestamps.set(sender_id, recent);
 
-      // Find or create conversation
-      let conversationId = data.conversation_id;
-      let conversation;
-      if (!conversationId || conversationId === 'undefined' || conversationId === 'null') {
+        // Find or create conversation
+        let conversationId = data.conversation_id;
+        let conversation;
+        let isNewConversation = false;
         conversation = await ChatConversation.findOne({
           where: {
             [Op.or]: [
@@ -65,32 +91,86 @@ export function chatSocket(io: Server) {
             user_one: sender_id,
             user_two: receiver_id
           });
-          console.log(`Created new conversation between ${sender_id} and ${receiver_id}`);
+          isNewConversation = true;
         }
-        conversationId = conversation.id.toString();
-        data.conversation_id = conversationId;
-      } else {
-        conversation = await ChatConversation.findByPk(conversationId);
-        if (!conversation) {
-          socket.emit('error', { message: 'Conversation not found' });
+        conversationId = conversation.id;
+
+        // Save to DB, then emit to room
+        let msg;
+        try {
+          msg = await ChatMessage.create({
+            conversation_id: conversationId,
+            sender_id,
+            receiver_id,
+            message: message || '',
+            message_type: message_type || 'text',
+            file_url: file_url || null,
+            file_name: file_name || null,
+            file_extension: file_extension || null,
+            file_size: file_size || null,
+            is_read: false,
+            deleted_by: [],
+          });
+        } catch (dbErr) {
+          console.error('Message creation error:', dbErr);
+          socket.emit('error', { message: 'Failed to save message', details: dbErr });
           return;
         }
+        const fullMsg = await ChatMessage.findByPk(msg.id, {
+          include: [
+            { model: User, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
+            { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
+          ],
+        });
+        let plainMsg: any = null;
+        if (fullMsg) {
+          plainMsg = fullMsg.toJSON();
+          plainMsg.tempId = tempId;
+        }
+        console.log('plainMsg', plainMsg);
+        if (callback) {
+          callback({ success: true, data: plainMsg }); // Make sure fullMsg includes tempId!
+        }
+        if (isNewConversation) {
+          // Fetch the full conversation object with users and messages
+          const fullConversation = await ChatConversation.findByPk(conversationId, {
+            include: [
+              {
+                model: ChatMessage,
+                include: [
+                  { model: User, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
+                  { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
+                ],
+                order: [['createdAt', 'ASC']],
+              },
+              { model: User, as: 'userOne', attributes: ['id', 'name', 'user_name', 'main_image', 'status', 'last_seen'] },
+              { model: User, as: 'userTwo', attributes: ['id', 'name', 'user_name', 'main_image', 'status', 'last_seen'] },
+            ],
+          });
+          io.to(`conversation_${conversationId}`).emit('new_conversation', { conversation: fullConversation, message: plainMsg });
+        } else {
+          io.to(`conversation_${conversationId}`).emit('new_message', plainMsg);
+        }
+        // Emit notification to receiver's user room
+        if (fullMsg && (fullMsg as any).sender) {
+          io.to(`user_${receiver_id}`).emit('notification', {
+            sender_image: (fullMsg as any).sender.main_image,
+            sender_name: (fullMsg as any).sender.name,
+            message: fullMsg.message,
+            file_type: fullMsg.file_url ? fullMsg.message_type : null,
+            conversation_id: fullMsg.conversation_id,
+            message_id: fullMsg.id,
+          });
+        }
+      } catch (err) {
+        console.error('send_message error:', err);
+        socket.emit('error', { message: 'Failed to send message', details: err });
       }
-
-      // Save to DB, then emit to room
-      const msg = await ChatMessage.create(data);
-      const fullMsg = await ChatMessage.findByPk(msg.id, {
-        include: [
-          { model: User, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
-          { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
-        ],
-      });
-      io.to(`conversation_${data.conversation_id}`).emit('new_message', fullMsg);
-      console.log(`Message sent in conversation_${data.conversation_id} by user ${sender_id}`);
     });
 
     // Edit message
-    socket.on('edit_message', async ({ messageId, message, userId }) => {
+    socket.on('edit_message', async ({ messageId, message }) => {
+      const userId = socket.data.user.id;
       const msg = await ChatMessage.findByPk(messageId);
       if (msg && msg.sender_id === userId) {
         msg.message = message;
@@ -102,7 +182,8 @@ export function chatSocket(io: Server) {
     });
 
     // Delete message
-    socket.on('delete_message', async ({ messageId, userId }) => {
+    socket.on('delete_message', async ({ messageId }) => {
+      const userId = socket.data.user.id;
       const msg = await ChatMessage.findByPk(messageId);
       if (!msg) return;
       if (msg.sender_id === userId && !msg.is_read) {
@@ -118,7 +199,8 @@ export function chatSocket(io: Server) {
     });
 
     // Mark as read
-    socket.on('mark_read', async ({ messageId, userId }) => {
+    socket.on('mark_read', async ({ messageId }) => {
+      const userId = socket.data.user.id;
       const msg = await ChatMessage.findByPk(messageId);
       if (msg && msg.receiver_id === userId) {
         msg.is_read = true;
@@ -127,29 +209,30 @@ export function chatSocket(io: Server) {
       }
     });
 
-    // User online (handled in join)
-    socket.on('user_online', ({ userId }) => {
-      onlineUsers.set(userId, socket.id);
-      socket.broadcast.emit('user_online', { userId });
-    });
-
     // User offline
     socket.on('disconnect', async () => {
-      // Find userId by socketId
-      for (const [userId, sid] of onlineUsers.entries()) {
-        if (sid === socket.id) {
-          onlineUsers.delete(userId);
-          // Update last_seen in DB
-          await User.update({ last_seen: new Date() }, { where: { id: userId } });
-          socket.broadcast.emit('user_offline', { userId, last_seen: new Date() });
-          console.log(`User ${userId} disconnected. Socket: ${socket.id}`);
+      for (const [userId, sockets] of onlineUsers.entries()) {
+        if (sockets.has(socket.id)) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) {
+            onlineUsers.delete(userId);
+            // Update last_seen and status in DB
+            await User.update(
+              { last_seen: new Date(), status: 'Offline' },
+              { where: { id: userId } }
+            );
+            socket.broadcast.emit('user_offline', { userId, last_seen: new Date() });
+            io.emit('user_status_changed', { userId, status: 'Offline' });
+            console.log(`User ${userId} disconnected. Socket: ${socket.id}`);
+          }
           break;
         }
       }
     });
 
     // Change user status
-    socket.on('change_status', async ({ userId, status }) => {
+    socket.on('change_status', async ({ status }) => {
+      const userId = socket.data.user.id;
       const ALLOWED_STATUSES = ['online', 'busy', 'offline', 'away'];
       if (!ALLOWED_STATUSES.includes(status)) {
         socket.emit('error', { message: 'Invalid status' });

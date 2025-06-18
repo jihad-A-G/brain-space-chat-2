@@ -21,6 +21,8 @@ ChatConversation.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
+      unique: true,
+      allowNull: false,
     },
     user_one: {
       type: DataTypes.INTEGER,
@@ -34,7 +36,7 @@ ChatConversation.init(
   {
     sequelize,
     modelName: 'ChatConversation',
-    tableName: 'chat_conversations',
+    tableName: 'ChatConversations',
     timestamps: false,
   }
 ); 

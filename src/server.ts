@@ -15,6 +15,9 @@ import chatRoutes from './routes/chat';
 import dotenv from 'dotenv';
 import { authenticateJWT } from './middlewares/auth';
 import jwt from 'jsonwebtoken';
+import path from 'path';
+import { notifyUsers } from './controllers/chatController';
+import { getJwt } from './controllers/userController';
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
@@ -26,10 +29,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
-
+app.post('/api/notify', notifyUsers);
+app.post('/api/users/jwt', getJwt);
 app.use(authenticateJWT);
 app.use('/api/users', userRoutes);
 app.use('/api/chats', chatRoutes);
@@ -39,7 +45,7 @@ let ioInstance: SocketIOServer | null = null;
 (async () => {
   try {
     setupAssociations();
-    await sequelize.sync();
+    await sequelize.sync()
     console.log('Database synced');
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
@@ -78,4 +84,4 @@ let ioInstance: SocketIOServer | null = null;
 export function getIO() {
   if (!ioInstance) throw new Error('Socket.IO not initialized yet');
   return ioInstance;
-} 
+}  
