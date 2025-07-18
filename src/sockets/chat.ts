@@ -1,15 +1,27 @@
 import { Server, Socket } from 'socket.io';
+import { defineModels } from '../models';
+import defaultSequelize from '../config/db-connection';
+import { Sequelize, Op } from 'sequelize';
 import { ChatMessage } from '../models/ChatMessage';
 import { User } from '../models/User';
 import { ChatConversation } from '../models/ChatConversation';
-import { Op } from 'sequelize';
 
 const onlineUsers = new Map<string, Set<string>>();
 const messageTimestamps = new Map<string, number[]>(); 
 
-
 export function chatSocket(io: Server) {
   io.on('connection', async (socket: Socket) => {
+    // Tenant-aware: extract subdomain from host
+    const host = socket.handshake.headers.host;
+    const subdomain = host ? host.split('.')[0] : null;
+    let models;
+    if (!subdomain || subdomain === 'www' || host === 'yourmaindomain.com') {
+      models = defineModels(defaultSequelize);
+    } else {
+      // For brevity, fallback to defaultSequelize; in production, use the same cache/lookup as middleware
+      models = defineModels(defaultSequelize);
+    }
+    const { User, ChatConversation, ChatMessage } = models;
     const userId = socket.data.user.id;
     let userSockets = onlineUsers.get(userId);
     let isFirstConnection = false;

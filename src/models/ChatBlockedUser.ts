@@ -1,5 +1,4 @@
-import { DataTypes, Model, Optional } from 'sequelize';
-import sequelize from '../config/db-connection';
+import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 interface ChatBlockedUserAttributes {
   id: number;
@@ -15,26 +14,29 @@ export class ChatBlockedUser extends Model<ChatBlockedUserAttributes, ChatBlocke
   public blocked_id!: number;
 }
 
-ChatBlockedUser.init(
-  {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
+export function defineChatBlockedUserModel(sequelize: Sequelize) {
+  ChatBlockedUser.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      blocker_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      blocked_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
     },
-    blocker_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    blocked_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-  },
-  {
-    sequelize,
-    modelName: 'ChatBlockedUser',
-    tableName: 'ChatBlockedUsers',
-    timestamps: true,
-  }
-); 
+    {
+      sequelize,
+      modelName: 'ChatBlockedUser',
+      tableName: 'ChatBlockedUsers',
+      timestamps: true,
+    }
+  );
+  return ChatBlockedUser;
+} 

@@ -1,5 +1,4 @@
-import { DataTypes, Model, Optional } from 'sequelize';
-import sequelize from '../config/db-connection';
+import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 interface ChatDeletedMessageAttributes {
   id: number;
@@ -15,26 +14,29 @@ export class ChatDeletedMessage extends Model<ChatDeletedMessageAttributes, Chat
   public deleted_by!: number;
 }
 
-ChatDeletedMessage.init(
-  {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
+export function defineChatDeletedMessageModel(sequelize: Sequelize) {
+  ChatDeletedMessage.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      message_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      deleted_by: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
     },
-    message_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    deleted_by: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-  },
-  {
-    sequelize,
-    modelName: 'ChatDeletedMessage',
-    tableName: 'ChatDeletedMessages',
-    timestamps: false,
-  }
-); 
+    {
+      sequelize,
+      modelName: 'ChatDeletedMessage',
+      tableName: 'ChatDeletedMessages',
+      timestamps: false,
+    }
+  );
+  return ChatDeletedMessage;
+} 

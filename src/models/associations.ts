@@ -4,7 +4,8 @@ import { ChatMessage } from './ChatMessage';
 import { ChatBlockedUser } from './ChatBlockedUser';
 import { ChatDeletedMessage } from './ChatDeletedMessage';
 
-export function setupAssociations() {
+export function setupAssociations(models: any) {
+  const { User, ChatConversation, ChatMessage, ChatBlockedUser, ChatDeletedMessage } = models;
   // User ↔ ChatConversation (user_one, user_two)
   ChatConversation.belongsTo(User, { as: 'userOne', foreignKey: 'user_one' });
   ChatConversation.belongsTo(User, { as: 'userTwo', foreignKey: 'user_two' });

@@ -3,7 +3,6 @@ import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import sequelize from './config/db-connection';
 import cors from 'cors';
-import { setupAssociations } from './models/associations';
 import './models/User';
 import './models/ChatConversation';
 import './models/ChatMessage';
@@ -18,6 +17,7 @@ import jwt from 'jsonwebtoken';
 import path from 'path';
 import { notifyUsers } from './controllers/chatController';
 import { getJwt } from './controllers/userController';
+import tenantSequelizeMiddleware from './middlewares/tenantSequelize';
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
@@ -34,6 +34,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+app.use(tenantSequelizeMiddleware);
 app.post('/api/notify', notifyUsers);
 app.post('/api/users/jwt', getJwt);
 app.use(authenticateJWT);
@@ -44,9 +45,6 @@ let ioInstance: SocketIOServer | null = null;
 
 (async () => {
   try {
-    setupAssociations();
-    await sequelize.sync()
-    console.log('Database synced');
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
       cors: {

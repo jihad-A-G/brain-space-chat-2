@@ -1,5 +1,4 @@
-import { DataTypes, Model, Optional } from 'sequelize';
-import sequelize from '../config/db-connection';
+import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 interface ChatConversationAttributes {
   id: number;
@@ -15,28 +14,31 @@ export class ChatConversation extends Model<ChatConversationAttributes, ChatConv
   public user_two!: number;
 }
 
-ChatConversation.init(
-  {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
-      unique: true,
-      allowNull: false,
+export function defineChatConversationModel(sequelize: Sequelize) {
+  ChatConversation.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+        unique: true,
+        allowNull: false,
+      },
+      user_one: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      user_two: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
     },
-    user_one: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    user_two: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-  },
-  {
-    sequelize,
-    modelName: 'ChatConversation',
-    tableName: 'ChatConversations',
-    timestamps: false,
-  }
-); 
+    {
+      sequelize,
+      modelName: 'ChatConversation',
+      tableName: 'ChatConversations',
+      timestamps: false,
+    }
+  );
+  return ChatConversation;
+} 

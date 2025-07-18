@@ -1,5 +1,4 @@
-import { DataTypes, Model, Optional } from 'sequelize';
-import sequelize from '../config/db-connection';
+import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 export type Gender = 'Male' | 'Female';
 
@@ -41,81 +40,84 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   public language_id!: number;
   public last_seen?: Date | null;
   public status?: string | null;
+}
+
+export function defineUserModel(sequelize: Sequelize) {
+  User.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      user_name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      password: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      phone_number: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      email_address: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      gender: {
+        type: DataTypes.ENUM('Male', 'Female'),
+        allowNull: false,
+      },
+      disabled: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+      role: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      main_image: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      token: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+      },
+      mobile_token: {
+        type: DataTypes.STRING(1000),
+        allowNull: false,
+      },
+      secret_key: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      language_id: {
+        type: DataTypes.INTEGER,
+        defaultValue: 1,
+      },
+      last_seen: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      status: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      sequelize,
+      modelName: 'User',
+      tableName: 'users',
+      timestamps: false,
+    }
+  );
+  return User;
 } 
- 
-User.init(
-  {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    user_name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true,
-    },
-    password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    phone_number: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    email_address: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    gender: {
-      type: DataTypes.ENUM('Male', 'Female'),
-      allowNull: false,
-    },
-    disabled: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-    },
-    role: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    main_image: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    token: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-    },
-    mobile_token: {
-      type: DataTypes.STRING(1000),
-      allowNull: false,
-    },
-    secret_key: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    language_id: {
-      type: DataTypes.INTEGER,
-      defaultValue: 1,
-    },
-    last_seen: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    status: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-  },
-  {
-    sequelize,
-    modelName: 'User',
-    tableName: 'users',
-    timestamps: false,
-  } 
-); 

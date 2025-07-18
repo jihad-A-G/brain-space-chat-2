@@ -1,7 +1,4 @@
 import { Request, Response } from 'express';
-import { ChatConversation } from '../models/ChatConversation';
-import { ChatMessage } from '../models/ChatMessage';
-import { User } from '../models/User';
 import { Op, Sequelize } from 'sequelize';
 import { getIO } from '../server';
 import fs from 'fs';
@@ -12,6 +9,8 @@ export async function fetchChats(req: Request, res: Response) {
   try {
     // @ts-ignore
     const userId = req.user.id;
+    // @ts-ignore
+    const { ChatConversation, ChatMessage, User } = req.tenant.models;
     // Find all conversations where user is user_one or user_two
     const conversations = await ChatConversation.findAll({
       where: {
@@ -92,6 +91,8 @@ export async function fetchChat(req: Request, res: Response) {
     // @ts-ignore
     const userId = req.user.id;
     const { conversationId } = req.params;
+    // @ts-ignore
+    const { ChatConversation, ChatMessage, User } = req.tenant.models;
     const conversation = await ChatConversation.findByPk(conversationId, {
       include: [
         {
@@ -138,6 +139,8 @@ export async function sendMessage(req: Request, res: Response) {
     }
     let conversation;
     let isNewConversation = false;
+    // @ts-ignore
+    const { ChatConversation, ChatMessage, User } = req.tenant.models;
     conversation = await ChatConversation.findOne({
       where: {
         [Op.or]: [
@@ -206,6 +209,8 @@ export async function editMessage(req: Request, res: Response) {
     const userId = req.user.id;
     const { messageId } = req.params;
     const { message } = req.body;
+    // @ts-ignore
+    const { ChatMessage, User } = req.tenant.models;
     const msg = await ChatMessage.findByPk(messageId);
     if (!msg) return res.status(404).json({ message: 'Message not found' });
     if (msg.sender_id !== userId) return res.status(403).json({ message: 'Not allowed' });
@@ -232,6 +237,8 @@ export async function deleteMessage(req: Request, res: Response) {
     // @ts-ignore
     const userId = req.user.id;
     const { messageId } = req.params;
+    // @ts-ignore
+    const { ChatMessage } = req.tenant.models;
     const msg = await ChatMessage.findByPk(messageId);
     if (!msg) return res.status(404).json({ message: 'Message not found' });
     // If sender deletes and receiver hasn't read, delete from DB
@@ -269,6 +276,8 @@ export async function deleteChatMessages(req: Request, res: Response) {
     // @ts-ignore
     const userId = req.user.id;
     const { conversationId } = req.params;
+    // @ts-ignore
+    const { ChatMessage } = req.tenant.models;
     // Find all messages in the conversation sent or received by the user
     const messages = await ChatMessage.findAll({
       where: {
@@ -302,6 +311,8 @@ export async function changeStatus(req: Request, res: Response) {
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
+    // @ts-ignore
+    const { User } = req.tenant.models;
     const user = await User.findByPk(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
     user.status = status;
@@ -319,6 +330,8 @@ export async function bulkMarkAsRead(req: Request, res: Response) {
     // @ts-ignore
     const userId = req.user.id;
     const { conversationId } = req.body;
+    // @ts-ignore
+    const { ChatMessage } = req.tenant.models;
     // Mark all unread messages in this conversation as read for this user (receiver)
     await ChatMessage.update(
       { is_read: true },
@@ -355,6 +368,8 @@ export async function createChat(req: Request, res: Response) {
     if (!user_one || !user_two) {
       return res.status(400).json({ message: 'user_one and user_two are required' });
     }
+    // @ts-ignore
+    const { ChatConversation } = req.tenant.models;
     // Check if a conversation already exists
     let conversation = await ChatConversation.findOne({
       where: {
@@ -380,6 +395,8 @@ export async function deleteChatForUser(req: Request, res: Response) {
     // @ts-ignore
     const userId = req.user.id;
     const { conversationId } = req.params;
+    // @ts-ignore
+    const { ChatConversation, ChatMessage } = req.tenant.models;
     // Find the conversation
     const conversation = await ChatConversation.findByPk(conversationId);
     if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
@@ -397,7 +414,7 @@ export async function deleteChatForUser(req: Request, res: Response) {
     }
     // Check if all messages are deleted by both users
     const userIds = [conversation.user_one, conversation.user_two].map(String);
-    const allDeleted = messages.every((msg) =>
+    const allDeleted = messages.every((msg: any) =>
       userIds.every((uid) => msg.deleted_by.includes(uid))
     );
     if (allDeleted) {
@@ -415,6 +432,7 @@ export async function deleteChatForUser(req: Request, res: Response) {
 // Notify users endpoint: supports type 'role', 'user', and 'broadcast'
 export async function notifyUsers(req: Request, res: Response) {
   try {
+    // @ts-ignore
     const { type, role, userIds, notification } = req.body;
     const io = getIO();
 

@@ -1,5 +1,4 @@
-import { DataTypes, Model, Optional } from 'sequelize';
-import sequelize from '../config/db-connection';
+import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 export type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio';
 
@@ -39,62 +38,65 @@ export class ChatMessage extends Model<ChatMessageAttributes, ChatMessageCreatio
   public readonly updatedAt!: Date;
 }
 
-ChatMessage.init(
-  {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
+export function defineChatMessageModel(sequelize: Sequelize) {
+  ChatMessage.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      conversation_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      sender_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      receiver_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      message: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+      },
+      message_type: {
+        type: DataTypes.ENUM('text', 'image', 'video', 'file', 'audio'),
+        defaultValue: 'text',
+      },
+      file_url: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      file_name: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      file_extension: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      file_size: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      is_read: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+      deleted_by: {
+        type: DataTypes.JSON,
+        defaultValue: [],
+      },
     },
-    conversation_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    sender_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    receiver_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    message: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-    },
-    message_type: {
-      type: DataTypes.ENUM('text', 'image', 'video', 'file', 'audio'),
-      defaultValue: 'text',
-    },
-    file_url: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    file_name: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    file_extension: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    file_size: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    is_read: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-    },
-    deleted_by: {
-      type: DataTypes.JSON,
-      defaultValue: [],
-    },
-  },
-  {
-    sequelize,
-    modelName: 'ChatMessage',
-    tableName: 'ChatMessages',
-    timestamps: true,
-  }
-); 
+    {
+      sequelize,
+      modelName: 'ChatMessage',
+      tableName: 'ChatMessages',
+      timestamps: true,
+    }
+  );
+  return ChatMessage;
+} 
