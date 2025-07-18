@@ -18,6 +18,7 @@ import { notifyUsers } from './controllers/chatController';
 import { getJwt } from './controllers/userController';
 import tenantSequelizeMiddleware from './middlewares/tenantSequelize';
 dotenv.config();
+//Welcome to test the script
 
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
