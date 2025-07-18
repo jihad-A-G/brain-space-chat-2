@@ -1,52 +1,151 @@
 import { Server, Socket } from 'socket.io';
 import { defineModels } from '../models';
-import defaultSequelize from '../config/db-connection';
 import { Sequelize, Op } from 'sequelize';
 import { ChatMessage } from '../models/ChatMessage';
 import { User } from '../models/User';
 import { ChatConversation } from '../models/ChatConversation';
+import mysql from 'mysql2/promise';
+
+// Configuration for tenant lookup database
+const tenantDbConfig = {
+  host: '157.180.50.29',
+  user: 'root',
+  password: 'jWAC5hpomatL2',
+  database: 'tenantDB',
+  charset: 'utf8mb4'
+};
+
+// Configuration for default database
+const defaultDbConfig = {
+  host: '157.180.50.29',
+  user: 'brain',
+  password: '8MUG3eT9GYXT298xtRKg',
+  database: 'brain_space',
+  charset: 'utf8mb4'
+};
+
+// Cache for database connections (shared with middleware)
+const sequelizeCache: Record<string, { sequelize: Sequelize, models: any }> = {};
+
+// Function to get tenant-specific database connection
+async function getTenantConnection(host: string | undefined) {
+  if (!host) {
+    // No host header, use default
+    return await getDefaultConnection();
+  }
+
+  // Remove port if present
+  const hostname = host.split(':')[0];
+  const parts = hostname.split('.');
+  let subdomain = '';
+  
+  // Check if this is brain-space.app domain structure
+  if (parts.length >= 2 && parts[parts.length - 2] === 'brain-space' && parts[parts.length - 1] === 'app') {
+    // If it's x.brain-space.app, subdomain is the first part
+    if (parts.length > 2) {
+      subdomain = parts[0];
+    }
+    // If it's just brain-space.app, subdomain is empty
+  } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // For local development, use default database
+    subdomain = '';
+  } else {
+    // For other domains, treat as default
+    subdomain = '';
+  }
+
+  // If no subdomain, use default database
+  if (!subdomain) {
+    return await getDefaultConnection();
+  }
+
+  // Check cache for tenant-specific connection
+  if (sequelizeCache[subdomain]) {
+    return sequelizeCache[subdomain];
+  }
+
+  // Lookup tenant DB info from tenantDB
+  const tenantConn = await mysql.createConnection(tenantDbConfig);
+  const [rows]: any = await tenantConn.execute(
+    'SELECT db_name, db_user, db_pass FROM tenants WHERE subdomain = ? LIMIT 1',
+    [subdomain]
+  );
+  await tenantConn.end();
+
+  if (!rows.length) {
+    // If tenant not found, fallback to default
+    return await getDefaultConnection();
+  }
+
+  const { db_name, db_user, db_pass } = rows[0];
+  const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
+    host: 'localhost',
+    dialect: 'mysql',
+    logging: false,
+    pool: { max: 5, min: 0, idle: 10000 }
+  });
+
+  const models = defineModels(tenantSequelize);
+  sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
+  return sequelizeCache[subdomain];
+}
+
+// Function to get default database connection
+async function getDefaultConnection() {
+  // Check cache for default connection
+  if (sequelizeCache['default']) {
+    return sequelizeCache['default'];
+  }
+
+  // Create default database connection
+  const defaultSequelizeInstance = new Sequelize(defaultDbConfig.database, defaultDbConfig.user, defaultDbConfig.password, {
+    host: defaultDbConfig.host,
+    dialect: 'mysql',
+    logging: false,
+    pool: { max: 5, min: 0, idle: 10000 }
+  });
+
+  const models = defineModels(defaultSequelizeInstance);
+  sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
+  return sequelizeCache['default'];
+}
 
 const onlineUsers = new Map<string, Set<string>>();
 const messageTimestamps = new Map<string, number[]>(); 
 
 export function chatSocket(io: Server) {
   io.on('connection', async (socket: Socket) => {
-    // Tenant-aware: extract subdomain from host
-    const host = socket.handshake.headers.host;
-    const subdomain = host ? host.split('.')[0] : null;
-    let models;
-    if (!subdomain || subdomain === 'www' || host === 'yourmaindomain.com') {
-      models = defineModels(defaultSequelize);
-    } else {
-      // For brevity, fallback to defaultSequelize; in production, use the same cache/lookup as middleware
-      models = defineModels(defaultSequelize);
-    }
-    const { User, ChatConversation, ChatMessage } = models;
-    const userId = socket.data.user.id;
-    let userSockets = onlineUsers.get(userId);
-    let isFirstConnection = false;
-    if (!userSockets) {
-      userSockets = new Set();
-      onlineUsers.set(userId, userSockets);
-      isFirstConnection = true;
-    }
-    userSockets.add(socket.id);
+    try {
+      // Get tenant-aware database connection
+      const host = socket.handshake.headers.host as string;
+      const { models } = await getTenantConnection(host);
+      
+      const { User, ChatConversation, ChatMessage } = models;
+      const userId = socket.data.user.id;
+      let userSockets = onlineUsers.get(userId);
+      let isFirstConnection = false;
+      if (!userSockets) {
+        userSockets = new Set();
+        onlineUsers.set(userId, userSockets);
+        isFirstConnection = true;
+      }
+      userSockets.add(socket.id);
 
-    // Ensure user joins their own user-specific room for notifications
-    socket.join(`user_${userId}`);
-    console.log(`User ${userId} joined room user_${userId}`);
-    socket.join(`role_${socket.data.user.role}`);
-    console.log(`User ${userId} joined room role_${socket.data.user.role}`);
+      // Ensure user joins their own user-specific room for notifications
+      socket.join(`user_${userId}`);
+      console.log(`User ${userId} joined room user_${userId}`);
+      socket.join(`role_${socket.data.user.role}`);
+      console.log(`User ${userId} joined room role_${socket.data.user.role}`);
 
-    if (isFirstConnection) {
-      // Mark user as online in DB
-      await User.update(
-        { status: 'Online', last_seen: null },
-        { where: { id: userId } }
-      );
-      socket.broadcast.emit('user_online', { userId });
-      io.emit('user_status_changed', { userId, status: 'Online' });
-    }
+      if (isFirstConnection) {
+        // Mark user as online in DB
+        await User.update(
+          { status: 'Online', last_seen: null },
+          { where: { id: userId } }
+        );
+        socket.broadcast.emit('user_online', { userId });
+        io.emit('user_status_changed', { userId, status: 'Online' });
+      }
 
     console.log(`Socket connected: ${socket.id}`);
     // Join all rooms for this user
@@ -260,5 +359,10 @@ export function chatSocket(io: Server) {
       io.emit('user_status_changed', { userId, status });
       console.log(`User ${userId} changed status to ${status} (via socket)`);
     });
+    
+    } catch (error) {
+      console.error('Socket connection error:', error);
+      socket.emit('error', { message: 'Internal server error' });
+    }
   });
 } 

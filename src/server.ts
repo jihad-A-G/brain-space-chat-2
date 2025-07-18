@@ -1,7 +1,6 @@
 import http from 'http';
 import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
-import sequelize from './config/db-connection';
 import cors from 'cors';
 import './models/User';
 import './models/ChatConversation';

@@ -1,7 +1,6 @@
 import { Sequelize } from 'sequelize';
 import mysql from 'mysql2/promise';
 import { defineModels } from '../models';
-import defaultSequelize from '../config/db-connection';
 import { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 dotenv.config();
