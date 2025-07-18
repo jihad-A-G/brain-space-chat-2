@@ -5,3 +5,6 @@ brain-space-chat.zip
 .cursorignore 
 Dockerfile
 .dockerignore
+dist/
+logs/
+uploads/
