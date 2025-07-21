@@ -55,8 +55,8 @@ let ioInstance: SocketIOServer | null = null;
   connectTimeout: 45000,
   pingTimeout: 20000,
   pingInterval: 25000,
-  transports: ["websocket"],
-  allowUpgrades: false,
+  transports: ["websocket", "polling"], // 👈 Try websocket first
+  allowUpgrades: true, // 👈 Allow upgrades from polling to websocket
   perMessageDeflate: {
     threshold: 1024,
     concurrency: 10
@@ -64,11 +64,14 @@ let ioInstance: SocketIOServer | null = null;
   httpCompression: true,
   cors: {
     origin: [
-      "https://abcom.brain-space.app",
-      "https://chat.brain-space.app"
+      'https://abcom.brain-space.app',
+      'https://brainkets.brain-space.app', 
+      'https://brain-space.app',
+      'https://chat.brain-space.app',
+      'http://localhost:3000'
     ],
-    methods: ["GET", "POST"],
-    allowedHeaders: ["content-type", "authorization"],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["content-type", "authorization", "x-tenant-subdomain"],
     credentials: true
   },
   cookie: {
