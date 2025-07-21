@@ -25,7 +25,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -49,7 +53,13 @@ let ioInstance: SocketIOServer | null = null;
     const io = new SocketIOServer(server, {
       cors: {
         origin: '*',
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        credentials: true
       },
+      transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000
     });
     ioInstance = io;
 
