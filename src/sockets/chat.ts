@@ -18,7 +18,7 @@ const tenantDbConfig = {
 // Configuration for default database
 const defaultDbConfig = {
   host: '157.180.50.29',
-  user: 'pos_new',
+  user: 'brain',
   password: '8MUG3eT9GYXT298xtRKg',
   database: 'brain_space',
   charset: 'utf8mb4'

@@ -26,7 +26,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const app = express();
 
 app.use(cors({
-  origin: '*',
+  origin: ["https://brains-pace.app","https://abcom.brains-pace.app","https://brainkets.brains-pace.app","https://ifs.brains-pace.app","http://localhost:3002"],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   credentials: true
 }));
@@ -52,7 +52,7 @@ let ioInstance: SocketIOServer | null = null;
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
       cors: {
-        origin: '*',
+          origin: ["https://brains-pace.app","https://abcom.brains-pace.app","https://brainkets.brains-pace.app","https://ifs.brains-pace.app","http://localhost:3002"],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         credentials: true
       },
