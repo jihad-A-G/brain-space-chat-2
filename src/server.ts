@@ -20,7 +20,7 @@ import tenantSequelizeMiddleware from './middlewares/tenantSequelize';
 dotenv.config();
 //Welcome to test the script
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8083;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
 const app = express();
@@ -56,10 +56,10 @@ let ioInstance: SocketIOServer | null = null;
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         credentials: true
       },
-      transports: ['websocket', 'polling'],
-  allowEIO3: true,
-  pingTimeout: 60000,
-  pingInterval: 25000
+      transports: ['polling', 'websocket'], // Try polling first
+      allowEIO3: true,
+      pingTimeout: 60000,
+      pingInterval: 25000
     });
     ioInstance = io;
 
