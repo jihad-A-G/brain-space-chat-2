@@ -51,17 +51,24 @@ let ioInstance: SocketIOServer | null = null;
 (async () => {
   try {
     const server = http.createServer(app);
-    const io = new SocketIOServer(server, {
-      cors: {
-          origin: '*',
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        credentials: true
-      },
-      transports: ['polling', 'websocket'], // Try polling first
-      allowEIO3: true,
-      pingTimeout: 60000,
-      pingInterval: 25000
-    });
+   const io = new SocketIOServer(server, {
+  cors: {
+    origin: ["https://abcom.brain-space.app"],
+    credentials: true
+  },
+  // Critical settings:
+  transports: ["websocket"], // Force WebSocket only
+  allowEIO3: true,          // Support older Engine.IO
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    skipMiddlewares: true
+  }
+});
+
+// Add this error handler
+io.engine.on("connection_error", (err) => {
+  console.error("WebSocket error:", err.req.headers, err.message, err.context);
+});
     ioInstance = io;
 
     // JWT auth middleware for Socket.IO
