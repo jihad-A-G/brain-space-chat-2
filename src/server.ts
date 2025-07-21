@@ -52,16 +52,31 @@ let ioInstance: SocketIOServer | null = null;
   try {
     const server = http.createServer(app);
    const io = new SocketIOServer(server, {
+  connectTimeout: 45000,
+  pingTimeout: 20000,
+  pingInterval: 25000,
+  transports: ["websocket"],
+  allowUpgrades: false,
+  perMessageDeflate: {
+    threshold: 1024,
+    concurrency: 10
+  },
+  httpCompression: true,
   cors: {
-    origin: ["https://abcom.brain-space.app"],
+    origin: [
+      "https://abcom.brain-space.app",
+      "https://chat.brain-space.app"
+    ],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["content-type", "authorization"],
     credentials: true
   },
-  // Critical settings:
-  transports: ["websocket"], // Force WebSocket only
-  allowEIO3: true,          // Support older Engine.IO
-  connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
-    skipMiddlewares: true
+  cookie: {
+    name: "io",
+    path: "/",
+    httpOnly: true,
+    sameSite: "none",
+    secure: true
   }
 });
 
