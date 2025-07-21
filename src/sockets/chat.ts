@@ -29,6 +29,8 @@ const sequelizeCache: Record<string, { sequelize: Sequelize, models: any }> = {}
 
 // Function to get tenant-specific database connection
 async function getTenantConnection(socket: Socket) {
+  console.log(`[SOCKET TENANT DEBUG] Starting tenant connection for socket: ${socket.id}`);
+  
   // Check for custom tenant header first
   const tenantHeader = socket.handshake.headers['x-tenant-subdomain'] as string;
   console.log(`[SOCKET TENANT DEBUG] Custom tenant header: '${tenantHeader}'`);
@@ -100,6 +102,7 @@ async function getTenantConnection(socket: Socket) {
 
   // If no subdomain, use default database
   if (!subdomain) {
+    console.log(`[SOCKET TENANT DEBUG] Using default database connection`);
     return await getDefaultConnection();
   }
 
@@ -111,59 +114,92 @@ async function getTenantConnection(socket: Socket) {
 
   console.log(`[SOCKET TENANT DEBUG] No cached connection found, querying tenant database`);
 
-  // Lookup tenant DB info from tenantDB
-  const tenantConn = await mysql.createConnection(tenantDbConfig);
-  const [rows]: any = await tenantConn.execute(
-    'SELECT db_name, db_user, db_pass FROM tenants WHERE subdomain = ? LIMIT 1',
-    [subdomain]
-  );
-  await tenantConn.end();
+  try {
+    // Lookup tenant DB info from tenantDB
+    const tenantConn = await mysql.createConnection(tenantDbConfig);
+    console.log(`[SOCKET TENANT DEBUG] Connected to tenant lookup database`);
+    
+    const [rows]: any = await tenantConn.execute(
+      'SELECT db_name, db_user, db_pass FROM tenants WHERE subdomain = ? LIMIT 1',
+      [subdomain]
+    );
+    await tenantConn.end();
 
-  console.log(`[SOCKET TENANT DEBUG] Tenant lookup query result: ${rows.length} rows found`);
+    console.log(`[SOCKET TENANT DEBUG] Tenant lookup query result: ${rows.length} rows found`);
 
-  if (!rows.length) {
-    console.log(`[SOCKET TENANT DEBUG] No tenant found for subdomain: '${subdomain}', using default`);
+    if (!rows.length) {
+      console.log(`[SOCKET TENANT DEBUG] No tenant found for subdomain: '${subdomain}', using default`);
+      return await getDefaultConnection();
+    }
+
+    const { db_name, db_user, db_pass } = rows[0];
+    console.log(`[SOCKET TENANT DEBUG] Found tenant credentials:`, {
+      db_name,
+      db_user,
+      host: 'localhost'
+    });
+
+    console.log(`[SOCKET TENANT DEBUG] Creating new tenant database connection`);
+    const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
+      host: 'localhost',
+      dialect: 'mysql',
+      logging: false,
+      pool: { max: 5, min: 0, idle: 10000 }
+    });
+
+    // Test the connection
+    await tenantSequelize.authenticate();
+    console.log(`[SOCKET TENANT DEBUG] Tenant database connection authenticated successfully`);
+
+    const models = defineModels(tenantSequelize);
+    sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
+    console.log(`[SOCKET TENANT DEBUG] Tenant connection cached for subdomain: '${subdomain}'`);
+    return sequelizeCache[subdomain];
+  } catch (error) {
+    console.error(`[SOCKET TENANT ERROR] Failed to connect to tenant database for '${subdomain}':`, error);
+    console.log(`[SOCKET TENANT DEBUG] Falling back to default database due to error`);
     return await getDefaultConnection();
   }
-
-  const { db_name, db_user, db_pass } = rows[0];
-  console.log(`[SOCKET TENANT DEBUG] Found tenant credentials:`, {
-    db_name,
-    db_user,
-    host: 'localhost'
-  });
-
-  const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
-    host: 'localhost',
-    dialect: 'mysql',
-    logging: false,
-    pool: { max: 5, min: 0, idle: 10000 }
-  });
-
-  const models = defineModels(tenantSequelize);
-  sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
-  console.log(`[SOCKET TENANT DEBUG] Tenant connection cached for subdomain: '${subdomain}'`);
-  return sequelizeCache[subdomain];
 }
 
 // Function to get default database connection
 async function getDefaultConnection() {
+  console.log(`[SOCKET TENANT DEBUG] Getting default database connection`);
+  
   // Check cache for default connection
   if (sequelizeCache['default']) {
+    console.log(`[SOCKET TENANT DEBUG] Found cached default connection`);
     return sequelizeCache['default'];
   }
 
-  // Create default database connection
-  const defaultSequelizeInstance = new Sequelize(defaultDbConfig.database, defaultDbConfig.user, defaultDbConfig.password, {
+  console.log(`[SOCKET TENANT DEBUG] Creating new default database connection`);
+  console.log(`[SOCKET TENANT DEBUG] Default DB config:`, {
     host: defaultDbConfig.host,
-    dialect: 'mysql',
-    logging: false,
-    pool: { max: 5, min: 0, idle: 10000 }
+    user: defaultDbConfig.user,
+    database: defaultDbConfig.database
   });
 
-  const models = defineModels(defaultSequelizeInstance);
-  sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
-  return sequelizeCache['default'];
+  try {
+    // Create default database connection
+    const defaultSequelizeInstance = new Sequelize(defaultDbConfig.database, defaultDbConfig.user, defaultDbConfig.password, {
+      host: defaultDbConfig.host,
+      dialect: 'mysql',
+      logging: false,
+      pool: { max: 5, min: 0, idle: 10000 }
+    });
+
+    // Test the connection
+    await defaultSequelizeInstance.authenticate();
+    console.log(`[SOCKET TENANT DEBUG] Default database connection authenticated successfully`);
+
+    const models = defineModels(defaultSequelizeInstance);
+    sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
+    console.log(`[SOCKET TENANT DEBUG] Default connection cached`);
+    return sequelizeCache['default'];
+  } catch (error) {
+    console.error(`[SOCKET TENANT ERROR] Failed to connect to default database:`, error);
+    throw error;
+  }
 }
 
 const onlineUsers = new Map<string, Set<string>>();
@@ -171,12 +207,17 @@ const messageTimestamps = new Map<string, number[]>();
 
 export function chatSocket(io: Server) {
   io.on('connection', async (socket: Socket) => {
+    console.log(`[SOCKET] New connection attempt: ${socket.id}`);
     try {
       // Get tenant-aware database connection
+      console.log(`[SOCKET] Getting tenant connection for socket: ${socket.id}`);
       const { models } = await getTenantConnection(socket);
+      console.log(`[SOCKET] Tenant connection established for socket: ${socket.id}`);
       
       const { User, ChatConversation, ChatMessage } = models;
       const userId = socket.data.user.id;
+      console.log(`[SOCKET] User ${userId} connecting with socket: ${socket.id}`);
+      
       let userSockets = onlineUsers.get(userId);
       let isFirstConnection = false;
       if (!userSockets) {
@@ -188,18 +229,24 @@ export function chatSocket(io: Server) {
 
       // Ensure user joins their own user-specific room for notifications
       socket.join(`user_${userId}`);
-      console.log(`User ${userId} joined room user_${userId}`);
+      console.log(`[SOCKET] User ${userId} joined room user_${userId}`);
       socket.join(`role_${socket.data.user.role}`);
-      console.log(`User ${userId} joined room role_${socket.data.user.role}`);
+      console.log(`[SOCKET] User ${userId} joined room role_${socket.data.user.role}`);
 
       if (isFirstConnection) {
+        console.log(`[SOCKET] First connection for user ${userId}, updating status to Online`);
         // Mark user as online in DB
-        await User.update(
-          { status: 'Online', last_seen: null },
-          { where: { id: userId } }
-        );
-        socket.broadcast.emit('user_online', { userId });
-        io.emit('user_status_changed', { userId, status: 'Online' });
+        try {
+          await User.update(
+            { status: 'Online', last_seen: null },
+            { where: { id: userId } }
+          );
+          console.log(`[SOCKET] Successfully updated user ${userId} status to Online`);
+          socket.broadcast.emit('user_online', { userId });
+          io.emit('user_status_changed', { userId, status: 'Online' });
+        } catch (updateError) {
+          console.error(`[SOCKET ERROR] Failed to update user ${userId} status:`, updateError);
+        }
       }
 
     console.log(`Socket connected: ${socket.id}`);
@@ -224,16 +271,23 @@ export function chatSocket(io: Server) {
 
     // Send message with rate limiting
     socket.on('send_message', async (data, callback) => {
-      console.log('send_message', data);
+      console.log(`[SOCKET] send_message event received from user ${userId}:`, data);
       try {
+        // Get fresh tenant connection for this operation
+        const { models: currentModels } = await getTenantConnection(socket);
+        const { User: CurrentUser, ChatConversation: CurrentChatConversation, ChatMessage: CurrentChatMessage } = currentModels;
+        
         const sender_id = socket.data.user.id;
         const { receiver_id, message, message_type, file_url, file_name, file_extension, file_size, tempId } = data;
+        console.log(`[SOCKET] Processing message from ${sender_id} to ${receiver_id}`);
+        
         // Only accept file_url, file_name, file_extension, file_size if already uploaded via REST
         const now = Date.now();
         const times = messageTimestamps.get(sender_id) || [];
         // Remove timestamps older than 2 seconds
         const recent = times.filter((t) => now - t < 2000);
         if (recent.length >= 5) {
+          console.log(`[SOCKET] Rate limit exceeded for user ${sender_id}`);
           socket.emit('rate_limited', { message: 'Too many messages, slow down.' });
           return;
         }
@@ -244,7 +298,9 @@ export function chatSocket(io: Server) {
         let conversationId = data.conversation_id;
         let conversation;
         let isNewConversation = false;
-        conversation = await ChatConversation.findOne({
+        console.log(`[SOCKET] Looking for conversation between ${sender_id} and ${receiver_id}`);
+        
+        conversation = await CurrentChatConversation.findOne({
           where: {
             [Op.or]: [
               { user_one: sender_id, user_two: receiver_id },
@@ -252,19 +308,25 @@ export function chatSocket(io: Server) {
             ]
           }
         });
+        
         if (!conversation) {
-          conversation = await ChatConversation.create({
+          console.log(`[SOCKET] Creating new conversation between ${sender_id} and ${receiver_id}`);
+          conversation = await CurrentChatConversation.create({
             user_one: sender_id,
             user_two: receiver_id
           });
           isNewConversation = true;
+          console.log(`[SOCKET] New conversation created with ID: ${conversation.id}`);
+        } else {
+          console.log(`[SOCKET] Found existing conversation with ID: ${conversation.id}`);
         }
         conversationId = conversation.id;
 
         // Save to DB, then emit to room
         let msg;
         try {
-          msg = await ChatMessage.create({
+          console.log(`[SOCKET] Creating message in conversation ${conversationId}`);
+          msg = await CurrentChatMessage.create({
             conversation_id: conversationId,
             sender_id,
             receiver_id,
@@ -277,48 +339,58 @@ export function chatSocket(io: Server) {
             is_read: false,
             deleted_by: [],
           });
+          console.log(`[SOCKET] Message created successfully with ID: ${msg.id}`);
         } catch (dbErr) {
-          console.error('Message creation error:', dbErr);
+          console.error(`[SOCKET ERROR] Message creation error:`, dbErr);
           socket.emit('error', { message: 'Failed to save message', details: dbErr });
           return;
         }
-        const fullMsg = await ChatMessage.findByPk(msg.id, {
+        
+        const fullMsg = await CurrentChatMessage.findByPk(msg.id, {
           include: [
-            { model: User, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
-            { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
+            { model: CurrentUser, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
+            { model: CurrentUser, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
           ],
         });
+        
         let plainMsg: any = null;
         if (fullMsg) {
           plainMsg = fullMsg.toJSON();
           plainMsg.tempId = tempId;
+          console.log(`[SOCKET] Full message prepared for emission:`, plainMsg);
         }
-        console.log('plainMsg', plainMsg);
+        
         if (callback) {
-          callback({ success: true, data: plainMsg }); // Make sure fullMsg includes tempId!
+          console.log(`[SOCKET] Sending callback response for message ${msg.id}`);
+          callback({ success: true, data: plainMsg });
         }
+        
         if (isNewConversation) {
+          console.log(`[SOCKET] Emitting new_conversation event for conversation ${conversationId}`);
           // Fetch the full conversation object with users and messages
-          const fullConversation = await ChatConversation.findByPk(conversationId, {
+          const fullConversation = await CurrentChatConversation.findByPk(conversationId, {
             include: [
               {
-                model: ChatMessage,
+                model: CurrentChatMessage,
                 include: [
-                  { model: User, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
-                  { model: User, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
+                  { model: CurrentUser, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
+                  { model: CurrentUser, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
                 ],
                 order: [['createdAt', 'ASC']],
               },
-              { model: User, as: 'userOne', attributes: ['id', 'name', 'user_name', 'main_image', 'status', 'last_seen'] },
-              { model: User, as: 'userTwo', attributes: ['id', 'name', 'user_name', 'main_image', 'status', 'last_seen'] },
+              { model: CurrentUser, as: 'userOne', attributes: ['id', 'name', 'user_name', 'main_image', 'status', 'last_seen'] },
+              { model: CurrentUser, as: 'userTwo', attributes: ['id', 'name', 'user_name', 'main_image', 'status', 'last_seen'] },
             ],
           });
           io.to(`conversation_${conversationId}`).emit('new_conversation', { conversation: fullConversation, message: plainMsg });
         } else {
+          console.log(`[SOCKET] Emitting new_message event to conversation_${conversationId}`);
           io.to(`conversation_${conversationId}`).emit('new_message', plainMsg);
         }
+        
         // Emit notification to receiver's user room
         if (fullMsg && (fullMsg as any).sender) {
+          console.log(`[SOCKET] Emitting notification to user_${receiver_id}`);
           io.to(`user_${receiver_id}`).emit('notification', {
             sender_image: (fullMsg as any).sender.main_image,
             sender_name: (fullMsg as any).sender.name,
@@ -329,7 +401,7 @@ export function chatSocket(io: Server) {
           });
         }
       } catch (err) {
-        console.error('send_message error:', err);
+        console.error(`[SOCKET ERROR] send_message error for user ${userId}:`, err);
         socket.emit('error', { message: 'Failed to send message', details: err });
       }
     });
