@@ -25,8 +25,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
 const app = express();
 
+app.set("trust proxy", 1); // 👈 TRUST FIRST PROXY
 app.use(cors({
-  origin: ["*"],
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   credentials: true
 }));
@@ -52,7 +53,7 @@ let ioInstance: SocketIOServer | null = null;
     const server = http.createServer(app);
     const io = new SocketIOServer(server, {
       cors: {
-          origin: ["*"],
+          origin: '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         credentials: true
       },
