@@ -30,34 +30,78 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
     const host = req.headers.host || '';
     console.log(`[TENANT DEBUG] Incoming request host: '${host}'`);
     
-    // Remove port if present
-    const hostname = host.split(':')[0];
-    console.log(`[TENANT DEBUG] Hostname after port removal: '${hostname}'`);
+    // Check for custom tenant header first (recommended for API requests)
+    const tenantHeader = req.headers['x-tenant-subdomain'] as string;
+    console.log(`[TENANT DEBUG] Custom tenant header: '${tenantHeader}'`);
     
-    // Extract subdomain from hostname
-    const parts = hostname.split('.');
-    console.log(`[TENANT DEBUG] Hostname parts:`, parts);
+    // Check referer header for automatic subdomain detection
+    const referer = req.headers.referer || req.headers.referrer as string;
+    console.log(`[TENANT DEBUG] Referer header: '${referer}'`);
+    
     let subdomain = '';
     
-    // Check if this is brain-space.app domain structure
-    if (parts.length >= 2 && parts[parts.length - 2] === 'brain-space' && parts[parts.length - 1] === 'app') {
-      console.log(`[TENANT DEBUG] Detected brain-space.app domain structure`);
-      // If it's x.brain-space.app, subdomain is the first part
-      if (parts.length > 2) {
-        subdomain = parts[0];
-        console.log(`[TENANT DEBUG] Extracted subdomain: '${subdomain}'`);
-      } else {
-        console.log(`[TENANT DEBUG] No subdomain detected (just brain-space.app)`);
+    if (tenantHeader) {
+      // Use custom header if provided
+      subdomain = tenantHeader;
+      console.log(`[TENANT DEBUG] Using tenant from custom header: '${subdomain}'`);
+    } else if (referer) {
+      // Extract subdomain from referer URL
+      try {
+        const refererUrl = new URL(referer);
+        const refererHostname = refererUrl.hostname;
+        const refererParts = refererHostname.split('.');
+        console.log(`[TENANT DEBUG] Referer hostname: '${refererHostname}', parts:`, refererParts);
+        
+        // Check if referer is from brain-space.app domain
+        if (refererParts.length >= 3 && 
+            refererParts[refererParts.length - 2] === 'brain-space' && 
+            refererParts[refererParts.length - 1] === 'app') {
+          const refererSubdomain = refererParts[0];
+          if (refererSubdomain !== 'chat' && refererSubdomain !== 'www') {
+            subdomain = refererSubdomain;
+            console.log(`[TENANT DEBUG] Extracted subdomain from referer: '${subdomain}'`);
+          } else {
+            console.log(`[TENANT DEBUG] Referer subdomain is '${refererSubdomain}' (ignoring)`);
+          }
+        } else {
+          console.log(`[TENANT DEBUG] Referer is not from brain-space.app domain`);
+        }
+      } catch (error) {
+        console.log(`[TENANT DEBUG] Failed to parse referer URL: ${error}`);
       }
-      // If it's just brain-space.app, subdomain is empty
-    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      // For local development, use default database
-      subdomain = '';
-      console.log(`[TENANT DEBUG] Local development detected, using default database`);
     } else {
-      // For other domains, treat as default
-      subdomain = '';
-      console.log(`[TENANT DEBUG] Other domain detected: '${hostname}', using default database`);
+      // Fallback to host-based detection
+      // Remove port if present
+      const hostname = host.split(':')[0];
+      console.log(`[TENANT DEBUG] Hostname after port removal: '${hostname}'`);
+      
+      // Extract subdomain from hostname
+      const parts = hostname.split('.');
+      console.log(`[TENANT DEBUG] Hostname parts:`, parts);
+      
+      // Check if this is brain-space.app domain structure
+      if (parts.length >= 2 && parts[parts.length - 2] === 'brain-space' && parts[parts.length - 1] === 'app') {
+        console.log(`[TENANT DEBUG] Detected brain-space.app domain structure`);
+        // If it's x.brain-space.app, subdomain is the first part
+        if (parts.length > 2) {
+          const hostSubdomain = parts[0];
+          // Only use host subdomain if it's not 'chat' (since that's where the server runs)
+          if (hostSubdomain !== 'chat') {
+            subdomain = hostSubdomain;
+            console.log(`[TENANT DEBUG] Extracted subdomain from host: '${subdomain}'`);
+          } else {
+            console.log(`[TENANT DEBUG] Host subdomain is 'chat' (server location), using default DB`);
+          }
+        } else {
+          console.log(`[TENANT DEBUG] No subdomain detected (just brain-space.app)`);
+        }
+      } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // For local development, use default database
+        console.log(`[TENANT DEBUG] Local development detected, using default database`);
+      } else {
+        // For other domains, treat as default
+        console.log(`[TENANT DEBUG] Other domain detected: '${hostname}', using default database`);
+      }
     }
 
     console.log(`[TENANT DEBUG] Final subdomain decision: '${subdomain}' (empty = default DB)`);
