@@ -52,6 +52,7 @@ let ioInstance: SocketIOServer | null = null;
   try {
     const server = http.createServer(app);
    const io = new SocketIOServer(server, {
+    path: '/socket.io',
   connectTimeout: 45000,
   pingTimeout: 20000,
   pingInterval: 25000,
