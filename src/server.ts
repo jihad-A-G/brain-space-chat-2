@@ -72,7 +72,7 @@ let ioInstance: SocketIOServer | null = null;
   connectTimeout: 45000,
   pingTimeout: 20000,
   pingInterval: 25000,
-  transports: ["websocket", "polling"], // 👈 Try websocket first
+  transports: ["websocket"], // 👈 Try websocket first
   allowUpgrades: true, // 👈 Allow upgrades from polling to websocket
   perMessageDeflate: {
     threshold: 1024,
