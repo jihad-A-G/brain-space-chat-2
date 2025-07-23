@@ -80,14 +80,8 @@ let ioInstance: SocketIOServer | null = null;
   },
   httpCompression: true,
   cors: {
-    origin: [
-      'https://abcom.brain-space.app',
-      'https://brainkets.brain-space.app', 
-      'https://brain-space.app',
-      'https://chat.brain-space.app',
-      'http://localhost:3000'
-    ],
-    methods: ["GET", "POST", "OPTIONS"],
+    origin: '*',
+    methods: ["GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["content-type", "authorization", "x-tenant-subdomain"],
     credentials: true
   },
