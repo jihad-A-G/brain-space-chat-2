@@ -26,21 +26,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const app = express();
 
 app.set("trust proxy", 1); // 👈 TRUST FIRST PROXY
-const allowedOrigins = [
-  'https://chat.brain-space.app',
-  'https://abcom.brain-space.app',
-  'https://brainkets.brain-space.app',
-  'https://brain-space.app',
-  'http://localhost:3000'
-];
+
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error('CORS not allowed for this origin: ' + origin));
-  },
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-tenant-subdomain'],
   credentials: true

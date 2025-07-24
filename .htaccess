@@ -1,0 +1,7 @@
+RewriteEngine On
+RewriteCond %{REQUEST_URI} ^/socket.io [NC]
+RewriteRule /(.*) http://localhost:8083/$1 [P,L]
+
+ProxyRequests Off
+ProxyPass / http://localhost:8083/
+ProxyPassReverse / http://localhost:8083/
