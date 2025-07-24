@@ -27,9 +27,20 @@ const app = express();
 
 app.set("trust proxy", 1); // 👈 TRUST FIRST PROXY
 
+const allowedDomain = 'brain-space.app';
 
 app.use(cors({
-  origin: '*',
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, false); // block non-browser tools
+    const url = new URL(origin);
+    const hostname = url.hostname;
+
+    if (hostname === allowedDomain || hostname.endsWith(`.${allowedDomain}`)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-tenant-subdomain'],
   credentials: true
