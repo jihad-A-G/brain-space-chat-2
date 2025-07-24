@@ -32,13 +32,20 @@ const allowedDomain = 'brain-space.app';
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, false); // block non-browser tools
-    const url = new URL(origin);
-    const hostname = url.hostname;
-
-    if (hostname === allowedDomain || hostname.endsWith(`.${allowedDomain}`)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    try {
+      const url = new URL(origin);
+      const hostname = url.hostname;
+      if (
+        hostname === allowedDomain ||
+        hostname.endsWith(`.${allowedDomain}`) ||
+        hostname === 'brain-space2.vercel.app'
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    } catch (e) {
+      callback(new Error('Invalid origin'));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
