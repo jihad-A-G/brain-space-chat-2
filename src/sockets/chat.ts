@@ -132,16 +132,35 @@ async function getTenantConnection(socket: Socket) {
       return await getDefaultConnection();
     }
 
+    // Special case: referer is brain-space2.vercel.app
+    if (referer && referer.startsWith('https://brain-space2.vercel.app/')) {
+      console.log(`[SOCKET TENANT DEBUG] Referer is brain-space2.vercel.app, using special credentials`);
+      const vercelSequelize = new Sequelize('pos_new', 'root', 'TryHarderplease!@#$2232', {
+        host: '88.198.32.140',
+        dialect: 'mysql',
+        logging: false,
+        pool: { max: 5, min: 0, idle: 10000 }
+      });
+      await vercelSequelize.authenticate();
+      const models = defineModels(vercelSequelize);
+      sequelizeCache['vercel'] = { sequelize: vercelSequelize, models };
+      return sequelizeCache['vercel'];
+    }
     const { db_name, db_user, db_pass } = rows[0];
+    let dbHost = 'localhost';
+    if (subdomain === 'dev') {
+      dbHost = '88.198.32.140';
+      console.log(`[SOCKET TENANT DEBUG] Subdomain 'dev' detected, using host: ${dbHost}`);
+    }
     console.log(`[SOCKET TENANT DEBUG] Found tenant credentials:`, {
       db_name,
       db_user,
-      host: 'localhost'
+      host: dbHost
     });
 
     console.log(`[SOCKET TENANT DEBUG] Creating new tenant database connection`);
     const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
-      host: 'localhost',
+      host: dbHost,
       dialect: 'mysql',
       logging: false,
       pool: { max: 5, min: 0, idle: 10000 }
