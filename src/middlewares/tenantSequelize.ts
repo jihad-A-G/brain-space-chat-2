@@ -5,6 +5,18 @@ import { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Extend Express Request interface to include 'tenant'
+declare global {
+  namespace Express {
+    interface Request {
+      tenant?: {
+        sequelize: Sequelize;
+        models: any;
+      };
+    }
+  }
+}
+
 // Configuration for tenant lookup database
 const tenantDbConfig = {
   host: '157.180.50.29',
@@ -171,8 +183,26 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
     console.log(`[TENANT DEBUG] Tenant lookup query result: ${rows.length} rows found`);
 
     if (!rows.length) {
-      console.log(`[TENANT DEBUG] No tenant found for subdomain: '${subdomain}'`);
-      // @ts-ignore
+      console.log(`[TENANT DEBUG] No tenant found for subdomain: '${subdomain}' on path ${req.path}`);
+      // Fallback: For non-API requests, use default DB instead of 404
+      if (!req.path.startsWith('/api/')) {
+        console.log(`[TENANT DEBUG] Fallback to default DB for non-API path: ${req.path}`);
+        if (sequelizeCache['default']) {
+          req.tenant = sequelizeCache['default'];
+          return next();
+        }
+        const defaultSequelizeInstance = new Sequelize(defaultDbConfig.database, defaultDbConfig.user, defaultDbConfig.password, {
+          host: defaultDbConfig.host,
+          dialect: 'mysql',
+          logging: false,
+          pool: { max: 5, min: 0, idle: 10000 }
+        });
+        const models = defineModels(defaultSequelizeInstance);
+        sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
+        req.tenant = sequelizeCache['default'];
+        return next();
+      }
+      // For API requests, still return 404
       return res.status(404).send('Tenant not found');
     }
 
