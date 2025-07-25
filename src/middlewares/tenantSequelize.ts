@@ -40,51 +40,112 @@ const sequelizeCache: Record<string, { sequelize: Sequelize, models: any }> = {}
 export default async function tenantSequelizeMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
 
-    // Always extract subdomain from referer
     const referer = req.headers.referer || req.headers.referrer as string;
     console.log(`[TENANT DEBUG] Referer header: '${referer}'`);
+    if (!referer) {
+      return res.status(400).send('No referer header provided');
+    }
     let subdomain = '';
-    if (referer) {
-      // Special case: referer is brain-space2.vercel.app
-      if (referer.startsWith('https://brain-space2.vercel.app/')) {
+    let dbHost = '157.180.50.29';
+    let dbName = '';
+    let dbUser = '';
+    let dbPass = '';
+    let useTenantDbLookup = false;
+    try {
+      const refererUrl = new URL(referer);
+      const hostname = refererUrl.hostname;
+      const parts = hostname.split('.');
+      console.log(`[TENANT DEBUG] Referer hostname: '${hostname}', parts:`, parts);
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // Localhost: use special config
+        dbHost = '88.198.32.140';
+        dbName = 'pos_new';
+        dbUser = 'root';
+        dbPass = 'TryHarderplease!@#$2232';
+        console.log(`[TENANT DEBUG] Referer is localhost, using special credentials`);
+      } else if (hostname === 'brain-space2.vercel.app') {
+        dbHost = '88.198.32.140';
+        dbName = 'pos_new';
+        dbUser = 'root';
+        dbPass = 'TryHarderplease!@#$2232';
         console.log(`[TENANT DEBUG] Referer is brain-space2.vercel.app, using special credentials`);
-        const vercelSequelize = new Sequelize('pos_new', 'root', 'TryHarderplease!@#$2232', {
-          host: '88.198.32.140',
-          dialect: 'mysql',
-          logging: false,
-          pool: { max: 5, min: 0, idle: 10000 }
-        });
-        const models = defineModels(vercelSequelize);
-        sequelizeCache['vercel'] = { sequelize: vercelSequelize, models };
-        req.tenant = sequelizeCache['vercel'];
-        return next();
-      }
-      try {
-        const refererUrl = new URL(referer);
-        const refererHostname = refererUrl.hostname;
-        const refererParts = refererHostname.split('.');
-        console.log(`[TENANT DEBUG] Referer hostname: '${refererHostname}', parts:`, refererParts);
-        if (refererParts.length >= 3 && 
-            refererParts[refererParts.length - 2] === 'brain-space' && 
-            refererParts[refererParts.length - 1] === 'app') {
-          const refererSubdomain = refererParts[0];
-          if (refererSubdomain !== 'chat' && refererSubdomain !== 'www') {
-            subdomain = refererSubdomain;
-            console.log(`[TENANT DEBUG] Extracted subdomain from referer: '${subdomain}'`);
-          } else {
-            console.log(`[TENANT DEBUG] Referer subdomain is '${refererSubdomain}' (ignoring)`);
-          }
-        } else {
-          console.log(`[TENANT DEBUG] Referer is not from brain-space.app domain`);
+      } else if (
+        parts.length >= 3 &&
+        parts[parts.length - 2] === 'brain-space' &&
+        parts[parts.length - 1] === 'app'
+      ) {
+        subdomain = parts[0];
+        if (subdomain === 'chat' || subdomain === 'www') {
+          return res.status(400).send('Invalid subdomain');
         }
-      } catch (error) {
-        console.log(`[TENANT DEBUG] Failed to parse referer URL: ${error}`);
+        if (subdomain === 'dev') {
+          dbHost = '88.198.32.140';
+          useTenantDbLookup = true;
+        } else if (subdomain === '') {
+          // Main domain: use brain_space
+          dbName = 'brain_space';
+          dbUser = 'brain';
+          dbPass = '8MUG3eT9GYXT298xtRKg';
+        } else {
+          useTenantDbLookup = true;
+        }
+      } else {
+        return res.status(400).send('Referer not allowed');
       }
-    } else {
-      console.log(`[TENANT DEBUG] No referer header found, cannot determine subdomain.`);
+    } catch (err) {
+      return res.status(400).send('Invalid referer URL');
     }
 
-    console.log(`[TENANT DEBUG] Final subdomain decision: '${subdomain}' (empty = default DB)`);
+    // If using special config (localhost, vercel)
+    if (dbName && dbUser && dbPass) {
+      if (sequelizeCache[dbName]) {
+        req.tenant = sequelizeCache[dbName];
+        return next();
+      }
+      const specialSequelize = new Sequelize(dbName, dbUser, dbPass, {
+        host: dbHost,
+        dialect: 'mysql',
+        logging: false,
+        pool: { max: 5, min: 0, idle: 10000 }
+      });
+      const models = defineModels(specialSequelize);
+      sequelizeCache[dbName] = { sequelize: specialSequelize, models };
+      req.tenant = sequelizeCache[dbName];
+      return next();
+    }
+
+    // If using tenant DB lookup
+    if (useTenantDbLookup) {
+      // Check cache
+      if (sequelizeCache[subdomain]) {
+        req.tenant = sequelizeCache[subdomain];
+        return next();
+      }
+      // Lookup tenant DB info from tenantDB
+      const tenantConn = await mysql.createConnection(tenantDbConfig);
+      const [rows]: any = await tenantConn.execute(
+        'SELECT db_name, db_user, db_pass FROM tenants WHERE subdomain = ? LIMIT 1',
+        [subdomain]
+      );
+      await tenantConn.end();
+      if (!rows.length) {
+        return res.status(404).send('Tenant not found');
+      }
+      const { db_name, db_user, db_pass } = rows[0];
+      const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
+        host: dbHost,
+        dialect: 'mysql',
+        logging: false,
+        pool: { max: 5, min: 0, idle: 10000 }
+      });
+      const models = defineModels(tenantSequelize);
+      sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
+      req.tenant = sequelizeCache[subdomain];
+      return next();
+    }
+
+    // If we reach here, something is wrong
+    return res.status(400).send('Invalid tenant configuration');
 
     // If no subdomain, use default database
     if (!subdomain) {
@@ -174,33 +235,6 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
       return res.status(404).send('Tenant not found');
     }
 
-    // @ts-ignore
-    const { db_name, db_user, db_pass } = rows[0];
-    let dbHost = 'localhost';
-    if (subdomain === 'dev') {
-      dbHost = '88.198.32.140';
-      console.log(`[TENANT DEBUG] Subdomain 'dev' detected, using host: ${dbHost}`);
-    }
-    console.log(`[TENANT DEBUG] Found tenant credentials:`, {
-      db_name,
-      db_user,
-      host: dbHost
-    });
-
-    console.log(`[TENANT DEBUG] Creating tenant-specific database connection`);
-    const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
-      host: dbHost,
-      dialect: 'mysql',
-      logging: false,
-      pool: { max: 5, min: 0, idle: 10000 }
-    });
-
-    const models = defineModels(tenantSequelize);
-    sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
-    console.log(`[TENANT DEBUG] Tenant connection cached and assigned to request for subdomain: '${subdomain}'`);
-    // @ts-ignore
-    req.tenant = sequelizeCache[subdomain];
-    next();
   } catch (err) {
     console.error(`[TENANT ERROR] Middleware error:`, err);
     next(err);
