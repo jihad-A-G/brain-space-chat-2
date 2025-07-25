@@ -31,59 +31,85 @@ const sequelizeCache: Record<string, { sequelize: Sequelize, models: any }> = {}
 async function getTenantConnection(socket: Socket) {
   console.log(`[SOCKET TENANT DEBUG] Starting tenant connection for socket: ${socket.id}`);
   
-  // Strict multi-tenant logic
-  const referer = socket.handshake.headers.referer || socket.handshake.headers.referrer as string;
-  console.log(`[SOCKET TENANT DEBUG] Referer header: '${referer}'`);
-  if (!referer) {
-    throw new Error('No referer header provided');
-  }
+  // Prefer tenant from handshake query param
+  const tenantParam = socket.handshake.query.tenant as string | undefined;
   let subdomain = '';
   let dbHost = '157.180.50.29';
   let dbName = '';
   let dbUser = '';
   let dbPass = '';
   let useTenantDbLookup = false;
-  try {
-    const refererUrl = new URL(referer);
-    const hostname = refererUrl.hostname;
-    const parts = hostname.split('.');
-    console.log(`[SOCKET TENANT DEBUG] Referer hostname: '${hostname}', parts:`, parts);
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+
+  if (tenantParam) {
+    subdomain = tenantParam;
+    console.log(`[SOCKET TENANT DEBUG] Using tenant from handshake query param: '${subdomain}'`);
+    if (subdomain === 'dev') {
+      dbHost = '88.198.32.140';
+      useTenantDbLookup = true;
+    } else if (subdomain === 'localhost' || subdomain === '127.0.0.1') {
       dbHost = '88.198.32.140';
       dbName = 'pos_new';
       dbUser = 'root';
       dbPass = 'TryHarderplease!@#$2232';
-      console.log(`[SOCKET TENANT DEBUG] Referer is localhost, using special credentials`);
-    } else if (hostname === 'brain-space2.vercel.app') {
+    } else if (subdomain === 'vercel' || subdomain === 'brain-space2.vercel.app') {
       dbHost = '88.198.32.140';
       dbName = 'pos_new';
       dbUser = 'root';
       dbPass = 'TryHarderplease!@#$2232';
-      console.log(`[SOCKET TENANT DEBUG] Referer is brain-space2.vercel.app, using special credentials`);
-    } else if (
-      parts.length >= 3 &&
-      parts[parts.length - 2] === 'brain-space' &&
-      parts[parts.length - 1] === 'app'
-    ) {
-      subdomain = parts[0];
-      if (subdomain === 'chat' || subdomain === 'www') {
-        throw new Error('Invalid subdomain');
-      }
-      if (subdomain === 'dev') {
-        dbHost = '88.198.32.140';
-        useTenantDbLookup = true;
-      } else if (subdomain === '') {
-        dbName = 'brain_space';
-        dbUser = 'brain';
-        dbPass = '8MUG3eT9GYXT298xtRKg';
-      } else {
-        useTenantDbLookup = true;
-      }
+    } else if (subdomain === '') {
+      dbName = 'brain_space';
+      dbUser = 'brain';
+      dbPass = '8MUG3eT9GYXT298xtRKg';
     } else {
-      throw new Error('Referer not allowed');
+      useTenantDbLookup = true;
     }
-  } catch (err) {
-    throw new Error('Invalid referer URL');
+  } else {
+    // Fallback to referer logic if no tenant param
+    const referer = socket.handshake.headers.referer || socket.handshake.headers.referrer as string;
+    console.log(`[SOCKET TENANT DEBUG] Referer header: '${referer}'`);
+    if (!referer) {
+      throw new Error('No referer header provided and no tenant param');
+    }
+    try {
+      const refererUrl = new URL(referer);
+      const hostname = refererUrl.hostname;
+      const parts = hostname.split('.');
+      console.log(`[SOCKET TENANT DEBUG] Referer hostname: '${hostname}', parts:`, parts);
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        dbHost = '88.198.32.140';
+        dbName = 'pos_new';
+        dbUser = 'root';
+        dbPass = 'TryHarderplease!@#$2232';
+      } else if (hostname === 'brain-space2.vercel.app') {
+        dbHost = '88.198.32.140';
+        dbName = 'pos_new';
+        dbUser = 'root';
+        dbPass = 'TryHarderplease!@#$2232';
+      } else if (
+        parts.length >= 3 &&
+        parts[parts.length - 2] === 'brain-space' &&
+        parts[parts.length - 1] === 'app'
+      ) {
+        subdomain = parts[0];
+        if (subdomain === 'chat' || subdomain === 'www') {
+          throw new Error('Invalid subdomain');
+        }
+        if (subdomain === 'dev') {
+          dbHost = '88.198.32.140';
+          useTenantDbLookup = true;
+        } else if (subdomain === '') {
+          dbName = 'brain_space';
+          dbUser = 'brain';
+          dbPass = '8MUG3eT9GYXT298xtRKg';
+        } else {
+          useTenantDbLookup = true;
+        }
+      } else {
+        throw new Error('Referer not allowed');
+      }
+    } catch (err) {
+      throw new Error('Invalid referer URL');
+    }
   }
 
   // If using special config (localhost, vercel)
