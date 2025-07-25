@@ -15,6 +15,7 @@ interface ChatMessageAttributes {
   file_size?: string | null;
   is_read: boolean;
   deleted_by: string[];
+  reply?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -33,6 +34,7 @@ export class ChatMessage extends Model<ChatMessageAttributes, ChatMessageCreatio
   public file_extension?: string | null;
   public file_size?: string | null;
   public is_read!: boolean;
+  public reply?: number | null;
   public deleted_by!: string[];
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -85,6 +87,14 @@ export function defineChatMessageModel(sequelize: Sequelize) {
       is_read: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
+      },
+      reply: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+         references: {
+        model: 'ChatMessages',
+        key: 'id',
+      },
       },
       deleted_by: {
         type: DataTypes.JSON,

@@ -255,11 +255,11 @@ export function chatSocket(io: Server) {
         // Get fresh tenant connection for this operation
         const { models: currentModels } = await getTenantConnection(socket);
         const { User: CurrentUser, ChatConversation: CurrentChatConversation, ChatMessage: CurrentChatMessage } = currentModels;
-        
+
         const sender_id = socket.data.user.id;
-        const { receiver_id, message, message_type, file_url, file_name, file_extension, file_size, tempId } = data;
+        const { receiver_id, message, message_type, file_url, file_name, file_extension, file_size, tempId, reply } = data;
         console.log(`[SOCKET] Processing message from ${sender_id} to ${receiver_id}`);
-        
+
         // Only accept file_url, file_name, file_extension, file_size if already uploaded via REST
         const now = Date.now();
         const times = messageTimestamps.get(sender_id) || [];
@@ -278,7 +278,7 @@ export function chatSocket(io: Server) {
         let conversation;
         let isNewConversation = false;
         console.log(`[SOCKET] Looking for conversation between ${sender_id} and ${receiver_id}`);
-        
+
         conversation = await CurrentChatConversation.findOne({
           where: {
             [Op.or]: [
@@ -287,7 +287,7 @@ export function chatSocket(io: Server) {
             ]
           }
         });
-        
+
         if (!conversation) {
           console.log(`[SOCKET] Creating new conversation between ${sender_id} and ${receiver_id}`);
           conversation = await CurrentChatConversation.create({
@@ -317,6 +317,7 @@ export function chatSocket(io: Server) {
             file_size: file_size || null,
             is_read: false,
             deleted_by: [],
+            reply: reply || null,
           });
           console.log(`[SOCKET] Message created successfully with ID: ${msg.id}`);
         } catch (dbErr) {
@@ -324,26 +325,24 @@ export function chatSocket(io: Server) {
           socket.emit('error', { message: 'Failed to save message', details: dbErr });
           return;
         }
-        
+
         const fullMsg = await CurrentChatMessage.findByPk(msg.id, {
           include: [
             { model: CurrentUser, as: 'sender', attributes: ['id', 'name', 'user_name', 'main_image'] },
             { model: CurrentUser, as: 'receiver', attributes: ['id', 'name', 'user_name', 'main_image'] },
           ],
         });
-        
+
         let plainMsg: any = null;
         if (fullMsg) {
           plainMsg = fullMsg.toJSON();
           plainMsg.tempId = tempId;
-          console.log(`[SOCKET] Full message prepared for emission:`, plainMsg);
         }
-        
+        console.log(`[SOCKET] Full message prepared for emission:`, plainMsg);
         if (callback) {
           console.log(`[SOCKET] Sending callback response for message ${msg.id}`);
           callback({ success: true, data: plainMsg });
         }
-        
         if (isNewConversation) {
           console.log(`[SOCKET] Emitting new_conversation event for conversation ${conversationId}`);
           // Fetch the full conversation object with users and messages
@@ -366,7 +365,6 @@ export function chatSocket(io: Server) {
           console.log(`[SOCKET] Emitting new_message event to conversation_${conversationId}`);
           io.to(`conversation_${conversationId}`).emit('new_message', plainMsg);
         }
-        
         // Emit notification to receiver's user room
         if (fullMsg && (fullMsg as any).sender) {
           console.log(`[SOCKET] Emitting notification to user_${receiver_id}`);
@@ -378,6 +376,18 @@ export function chatSocket(io: Server) {
             conversation_id: fullMsg.conversation_id,
             message_id: fullMsg.id,
           });
+          // Emit updated unread count to receiver
+          try {
+            const unreadCount = await CurrentChatMessage.count({
+              where: {
+                receiver_id: receiver_id,
+                is_read: false,
+              },
+            });
+            io.to(`user_${receiver_id}`).emit('unread_count', { count: unreadCount, hasUnread: unreadCount > 0 });
+          } catch (err) {
+            console.error('Failed to fetch unread count for receiver:', err);
+          }
         }
       } catch (err) {
         console.error(`[SOCKET ERROR] send_message error for user ${userId}:`, err);
@@ -417,12 +427,62 @@ export function chatSocket(io: Server) {
 
     // Mark as read
     socket.on('mark_read', async ({ messageId }) => {
+      // Enhanced bulk mark as read
+      // Accepts conversation_id, marks all unread messages as read for this user in the conversation
+      // Emits messages_read and updates unread count, supports callback
       const userId = socket.data.user.id;
-      const msg = await ChatMessage.findByPk(messageId);
-      if (msg && msg.receiver_id === userId) {
-        msg.is_read = true;
-        await msg.save();
-        io.to(`conversation_${msg.conversation_id}`).emit('message_read', { messageId, userId });
+      // Accept both messageId (legacy) and conversation_id (bulk)
+      if (typeof arguments[0] === 'object' && arguments[0].conversation_id) {
+        const { conversation_id } = arguments[0];
+        const callback = typeof arguments[1] === 'function' ? arguments[1] : undefined;
+        try {
+          // Mark all unread messages as read for this user in the conversation
+          const [updatedCount] = await ChatMessage.update(
+            { is_read: true },
+            {
+              where: {
+                conversation_id,
+                receiver_id: userId,
+                is_read: false,
+                deleted_by: { [Op.not]: { [Op.contains]: [userId] } },
+              },
+            }
+          );
+          // Optionally, fetch all message IDs that were updated
+          const updatedMessages = await ChatMessage.findAll({
+            where: {
+              conversation_id,
+              receiver_id: userId,
+              is_read: true,
+            },
+            attributes: ['id'],
+          });
+          const messageIds = updatedMessages.map(msg => msg.id);
+          // Emit to all clients in the conversation
+          io.to(`conversation_${conversation_id}`).emit('messages_read', { conversation_id, userId, messageIds });
+          // Update unread count for the user
+          const unreadCount = await ChatMessage.count({
+            where: {
+              receiver_id: userId,
+              is_read: false,
+              deleted_by: { [Op.not]: { [Op.contains]: [userId] } },
+            },
+          });
+          io.to(`user_${userId}`).emit('unread_count', { count: unreadCount, hasUnread: unreadCount > 0 });
+          callback && callback({ success: true, data: { updatedCount, messageIds } });
+        } catch (err) {
+          console.error('Bulk mark_read error:', err);
+          callback && callback({ success: false, error: err as any });
+        }
+      } else {
+        // Legacy: mark a single message as read
+        const messageId = arguments[0]?.messageId || arguments[0];
+        const msg = await ChatMessage.findByPk(messageId);
+        if (msg && msg.receiver_id === userId) {
+          msg.is_read = true;
+          await msg.save();
+          io.to(`conversation_${msg.conversation_id}`).emit('message_read', { messageId, userId });
+        }
       }
     });
 

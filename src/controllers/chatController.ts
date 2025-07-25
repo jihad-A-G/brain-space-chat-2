@@ -127,7 +127,7 @@ export async function sendMessage(req: Request, res: Response) {
     // @ts-ignore
     const userId = req.user.id;
     let { conversationId } = req.params;
-    const { message, receiver_id, message_type } = req.body;
+    const { message, receiver_id, message_type,reply } = req.body;
     console.log("receiver_id", receiver_id);
     console.log("conversationId", conversationId);
     let file_url = null, file_name = null, file_extension = null, file_size = null;
@@ -168,6 +168,7 @@ export async function sendMessage(req: Request, res: Response) {
       file_size,
       is_read: false,
       deleted_by: [],
+      reply: reply || null
     });
     const fullMsg = await ChatMessage.findByPk(msg.id, {
       include: [
