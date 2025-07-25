@@ -40,6 +40,7 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
   try {
 
     const referer = req.headers.referer || req.headers.referrer as string;
+    const hostHeader = req.headers.host;
     console.log(`[TENANT DEBUG] Referer header: '${referer}'`);
     if (!referer) {
       return res.status(400).send('No referer header provided');
@@ -97,6 +98,16 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
 
     // If using special config (localhost, vercel)
     if (dbName && dbUser && dbPass) {
+      console.table([
+        {
+          'Request Host': hostHeader,
+          'Referer': referer,
+          'DB Host': dbHost,
+          'DB Name': dbName,
+          'DB User': dbUser,
+          'Tenant Subdomain': subdomain || '(default/special)'
+        }
+      ]);
       const specialSequelize = new Sequelize(dbName, dbUser, dbPass, {
         host: dbHost,
         dialect: 'mysql',
@@ -121,6 +132,16 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
         return res.status(404).send('Tenant not found');
       }
       const { db_name, db_user, db_pass } = rows[0];
+      console.table([
+        {
+          'Request Host': hostHeader,
+          'Referer': referer,
+          'DB Host': dbHost,
+          'DB Name': db_name,
+          'DB User': db_user,
+          'Tenant Subdomain': subdomain
+        }
+      ]);
       const tenantSequelize = new Sequelize(db_name, db_user, db_pass, {
         host: dbHost,
         dialect: 'mysql',
@@ -137,14 +158,16 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
 
     // If no subdomain, use default database
     if (!subdomain) {
-      console.log(`[TENANT DEBUG] Using default database connection`);
-      console.log(`[TENANT DEBUG] Creating new default database connection`);
-      console.log(`[TENANT DEBUG] Default DB config:`, {
-        host: defaultDbConfig.host,
-        user: defaultDbConfig.user,
-        database: defaultDbConfig.database
-      });
-
+      console.table([
+        {
+          'Request Host': hostHeader,
+          'Referer': referer,
+          'DB Host': defaultDbConfig.host,
+          'DB Name': defaultDbConfig.database,
+          'DB User': defaultDbConfig.user,
+          'Tenant Subdomain': '(default)'
+        }
+      ]);
       // Create default database connection
       const defaultSequelizeInstance = new Sequelize(defaultDbConfig.database, defaultDbConfig.user, defaultDbConfig.password, {
         host: defaultDbConfig.host,
