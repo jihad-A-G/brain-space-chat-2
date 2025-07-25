@@ -35,6 +35,8 @@ app.use(cors({
     try {
       const url = new URL(origin);
       const hostname = url.hostname;
+      console.log(`[CORS DEBUG] Origin: ${origin}, Hostname: ${hostname}`);
+      
       if (
         hostname === allowedDomain ||
         hostname.endsWith(`${allowedDomain}`) ||
