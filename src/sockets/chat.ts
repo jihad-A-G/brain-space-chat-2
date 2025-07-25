@@ -64,17 +64,17 @@ async function getTenantConnection(socket: Socket) {
       useTenantDbLookup = true;
     }
   } else {
-    // Fallback to referer logic if no tenant param
-    const referer = socket.handshake.headers.referer || socket.handshake.headers.referrer as string;
-    console.log(`[SOCKET TENANT DEBUG] Referer header: '${referer}'`);
-    if (!referer) {
-      throw new Error('No referer header provided and no tenant param');
+    // Fallback to Origin header if no tenant param
+    const origin = socket.handshake.headers.origin as string | undefined;
+    console.log(`[SOCKET TENANT DEBUG] Origin header: '${origin}'`);
+    if (!origin) {
+      throw new Error('No origin header provided and no tenant param');
     }
     try {
-      const refererUrl = new URL(referer);
-      const hostname = refererUrl.hostname;
+      const originUrl = new URL(origin);
+      const hostname = originUrl.hostname;
       const parts = hostname.split('.');
-      console.log(`[SOCKET TENANT DEBUG] Referer hostname: '${hostname}', parts:`, parts);
+      console.log(`[SOCKET TENANT DEBUG] Origin hostname: '${hostname}', parts:`, parts);
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
         dbHost = '88.198.32.140';
         dbName = 'pos_new';
@@ -105,10 +105,10 @@ async function getTenantConnection(socket: Socket) {
           useTenantDbLookup = true;
         }
       } else {
-        throw new Error('Referer not allowed');
+        throw new Error('Origin not allowed');
       }
     } catch (err) {
-      throw new Error('Invalid referer URL');
+      throw new Error('Invalid origin URL');
     }
   }
 
