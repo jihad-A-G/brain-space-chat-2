@@ -35,7 +35,6 @@ const defaultDbConfig = {
   charset: 'utf8mb4'
 };
 
-const sequelizeCache: Record<string, { sequelize: Sequelize, models: any }> = {};
 
 export default async function tenantSequelizeMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
@@ -98,10 +97,6 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
 
     // If using special config (localhost, vercel)
     if (dbName && dbUser && dbPass) {
-      if (sequelizeCache[dbName]) {
-        req.tenant = sequelizeCache[dbName];
-        return next();
-      }
       const specialSequelize = new Sequelize(dbName, dbUser, dbPass, {
         host: dbHost,
         dialect: 'mysql',
@@ -109,18 +104,12 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
         pool: { max: 5, min: 0, idle: 10000 }
       });
       const models = defineModels(specialSequelize);
-      sequelizeCache[dbName] = { sequelize: specialSequelize, models };
-      req.tenant = sequelizeCache[dbName];
+      req.tenant = { sequelize: specialSequelize, models };
       return next();
     }
 
     // If using tenant DB lookup
     if (useTenantDbLookup) {
-      // Check cache
-      if (sequelizeCache[subdomain]) {
-        req.tenant = sequelizeCache[subdomain];
-        return next();
-      }
       // Lookup tenant DB info from tenantDB
       const tenantConn = await mysql.createConnection(tenantDbConfig);
       const [rows]: any = await tenantConn.execute(
@@ -139,8 +128,7 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
         pool: { max: 5, min: 0, idle: 10000 }
       });
       const models = defineModels(tenantSequelize);
-      sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
-      req.tenant = sequelizeCache[subdomain];
+      req.tenant = { sequelize: tenantSequelize, models };
       return next();
     }
 
@@ -150,15 +138,6 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
     // If no subdomain, use default database
     if (!subdomain) {
       console.log(`[TENANT DEBUG] Using default database connection`);
-      
-      // Check cache for default connection
-      if (sequelizeCache['default']) {
-        console.log(`[TENANT DEBUG] Found cached default connection`);
-        // @ts-ignore
-        req.tenant = sequelizeCache['default'];
-        return next();
-      }
-
       console.log(`[TENANT DEBUG] Creating new default database connection`);
       console.log(`[TENANT DEBUG] Default DB config:`, {
         host: defaultDbConfig.host,
@@ -175,65 +154,13 @@ export default async function tenantSequelizeMiddleware(req: Request, res: Respo
       });
 
       const models = defineModels(defaultSequelizeInstance);
-      sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
-      console.log(`[TENANT DEBUG] Default connection cached and assigned to request`);
-      // @ts-ignore
-      req.tenant = sequelizeCache['default'];
+      req.tenant = { sequelize: defaultSequelizeInstance, models };
       return next();
     }
 
     console.log(`[TENANT DEBUG] Looking up tenant-specific connection for subdomain: '${subdomain}'`);
 
-    // Check cache for tenant-specific connection
-    if (sequelizeCache[subdomain]) {
-      console.log(`[TENANT DEBUG] Found cached connection for subdomain: '${subdomain}'`);
-      // @ts-ignore
-      req.tenant = sequelizeCache[subdomain];
-      return next();
-    }
-
-    console.log(`[TENANT DEBUG] No cached connection found, querying tenant database`);
-    console.log(`[TENANT DEBUG] Tenant DB lookup config:`, {
-      host: tenantDbConfig.host,
-      user: tenantDbConfig.user,
-      database: tenantDbConfig.database
-    });
-
-    // Lookup tenant DB info from tenantDB
-    const tenantConn = await mysql.createConnection(tenantDbConfig);
-    console.log(`[TENANT DEBUG] Connected to tenant lookup database`);
-    
-    const [rows]: any = await tenantConn.execute(
-      'SELECT db_name, db_user, db_pass FROM tenants WHERE subdomain = ? LIMIT 1',
-      [subdomain]
-    );
-    await tenantConn.end();
-    
-    console.log(`[TENANT DEBUG] Tenant lookup query result: ${rows.length} rows found`);
-
-    if (!rows.length) {
-      console.log(`[TENANT DEBUG] No tenant found for subdomain: '${subdomain}' on path ${req.path}`);
-      // Fallback: For non-API requests, use default DB instead of 404
-      if (!req.path.startsWith('/api/')) {
-        console.log(`[TENANT DEBUG] Fallback to default DB for non-API path: ${req.path}`);
-        if (sequelizeCache['default']) {
-          req.tenant = sequelizeCache['default'];
-          return next();
-        }
-        const defaultSequelizeInstance = new Sequelize(defaultDbConfig.database, defaultDbConfig.user, defaultDbConfig.password, {
-          host: defaultDbConfig.host,
-          dialect: 'mysql',
-          logging: false,
-          pool: { max: 5, min: 0, idle: 10000 }
-        });
-        const models = defineModels(defaultSequelizeInstance);
-        sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
-        req.tenant = sequelizeCache['default'];
-        return next();
-      }
-      // For API requests, still return 404
-      return res.status(404).send('Tenant not found');
-    }
+    // Check cache for tenant-specific connection (REMOVED)
 
   } catch (err) {
     console.error(`[TENANT ERROR] Middleware error:`, err);

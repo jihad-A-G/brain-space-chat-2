@@ -24,8 +24,6 @@ const defaultDbConfig = {
   charset: 'utf8mb4'
 };
 
-// Cache for database connections (shared with middleware)
-const sequelizeCache: Record<string, { sequelize: Sequelize, models: any }> = {};
 
 // Function to get tenant-specific database connection
 async function getTenantConnection(socket: Socket) {
@@ -114,9 +112,6 @@ async function getTenantConnection(socket: Socket) {
 
   // If using special config (localhost, vercel)
   if (dbName && dbUser && dbPass) {
-    if (sequelizeCache[dbName]) {
-      return sequelizeCache[dbName];
-    }
     const specialSequelize = new Sequelize(dbName, dbUser, dbPass, {
       host: dbHost,
       dialect: 'mysql',
@@ -125,15 +120,11 @@ async function getTenantConnection(socket: Socket) {
     });
     await specialSequelize.authenticate();
     const models = defineModels(specialSequelize);
-    sequelizeCache[dbName] = { sequelize: specialSequelize, models };
-    return sequelizeCache[dbName];
+    return { sequelize: specialSequelize, models };
   }
 
   // If using tenant DB lookup
   if (useTenantDbLookup) {
-    if (sequelizeCache[subdomain]) {
-      return sequelizeCache[subdomain];
-    }
     const tenantConn = await mysql.createConnection(tenantDbConfig);
     const [rows]: any = await tenantConn.execute(
       'SELECT db_name, db_user, db_pass FROM tenants WHERE subdomain = ? LIMIT 1',
@@ -152,8 +143,7 @@ async function getTenantConnection(socket: Socket) {
     });
     await tenantSequelize.authenticate();
     const models = defineModels(tenantSequelize);
-    sequelizeCache[subdomain] = { sequelize: tenantSequelize, models };
-    return sequelizeCache[subdomain];
+    return { sequelize: tenantSequelize, models };
   }
 
   throw new Error('Invalid tenant configuration');
@@ -163,12 +153,6 @@ async function getTenantConnection(socket: Socket) {
 async function getDefaultConnection() {
   console.log(`[SOCKET TENANT DEBUG] Getting default database connection`);
   
-  // Check cache for default connection
-  if (sequelizeCache['default']) {
-    console.log(`[SOCKET TENANT DEBUG] Found cached default connection`);
-    return sequelizeCache['default'];
-  }
-
   console.log(`[SOCKET TENANT DEBUG] Creating new default database connection`);
   console.log(`[SOCKET TENANT DEBUG] Default DB config:`, {
     host: defaultDbConfig.host,
@@ -190,9 +174,7 @@ async function getDefaultConnection() {
     console.log(`[SOCKET TENANT DEBUG] Default database connection authenticated successfully`);
 
     const models = defineModels(defaultSequelizeInstance);
-    sequelizeCache['default'] = { sequelize: defaultSequelizeInstance, models };
-    console.log(`[SOCKET TENANT DEBUG] Default connection cached`);
-    return sequelizeCache['default'];
+    return { sequelize: defaultSequelizeInstance, models };
   } catch (error) {
     console.error(`[SOCKET TENANT ERROR] Failed to connect to default database:`, error);
     throw error;
