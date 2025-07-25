@@ -37,8 +37,10 @@ app.use(cors({
       const hostname = url.hostname;
       if (
         hostname === allowedDomain ||
-        hostname.endsWith(`.${allowedDomain}`) ||
-        hostname === 'brain-space2.vercel.app'
+        hostname.endsWith(`${allowedDomain}`) ||
+        hostname === 'brain-space2.vercel.app' ||
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1'
       ) {
         callback(null, true);
       } else {
