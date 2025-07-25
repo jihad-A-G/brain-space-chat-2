@@ -11,7 +11,7 @@ import { chatSocket } from './sockets/chat';
 import userRoutes from './routes/user';
 import chatRoutes from './routes/chat';
 import dotenv from 'dotenv';
-import { authenticateJWT } from './middlewares/auth';
+import  authMiddleware  from './middlewares/auth';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import { notifyUsers } from './controllers/chatController';
@@ -69,7 +69,7 @@ app.get('/health', (req, res) => {
 app.use(tenantSequelizeMiddleware);
 app.post('/api/notify', notifyUsers);
 app.post('/api/users/jwt', getJwt);
-app.use(authenticateJWT);
+app.use(authMiddleware);
 app.use('/api/users', userRoutes);
 app.use('/api/chats', chatRoutes);
 
@@ -111,18 +111,23 @@ io.engine.on("connection_error", (err) => {
 });
     ioInstance = io;
 
-    // JWT auth middleware for Socket.IO
-    io.use((socket, next) => {
+    // Token auth middleware for Socket.IO (no JWT, check User table)
+    io.use(async (socket, next) => {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
       if (!token) {
         return next(new Error('Authentication error: No token provided'));
       }
       try {
-        const payload = jwt.verify(token, JWT_SECRET);
-        socket.data.user = payload;
+        // Get tenant-aware User model
+        const { models } = await require('./sockets/chat').getTenantConnection(socket);
+        const user = await models.User.findOne({ where: { token } });
+        if (!user) {
+          return next(new Error('Authentication error: Invalid token'));
+        }
+        socket.data.user = user;
         next();
       } catch (err) {
-        next(new Error('Authentication error: Invalid token'));
+        next(new Error('Authentication error: DB error'));
       }
     });
 
