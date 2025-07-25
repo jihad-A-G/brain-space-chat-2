@@ -7,7 +7,7 @@ import './models/ChatConversation';
 import './models/ChatMessage';
 import './models/ChatBlockedUser';
 import './models/ChatDeletedMessage';
-import { chatSocket } from './sockets/chat';
+import { chatSocket, getTenantConnection } from './sockets/chat';
 import userRoutes from './routes/user';
 import chatRoutes from './routes/chat';
 import dotenv from 'dotenv';
@@ -119,8 +119,7 @@ io.engine.on("connection_error", (err) => {
       }
       try {
         // Ensure tenant DB connection is established before checking token
-        const chatModule = require('./sockets/chat');
-        const tenantConn = await chatModule.getTenantConnection(socket);
+        const tenantConn = await getTenantConnection(socket);
         if (!tenantConn || !tenantConn.sequelize) {
           console.error('[Socket Auth] Tenant DB connection not established for socket:', socket.id);
           return next(new Error('Authentication error: Tenant DB not connected'));

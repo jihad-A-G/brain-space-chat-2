@@ -26,7 +26,7 @@ const defaultDbConfig = {
 
 
 // Function to get tenant-specific database connection
-async function getTenantConnection(socket: Socket) {
+export async function getTenantConnection(socket: Socket) {
   console.log(`[SOCKET TENANT DEBUG] Starting tenant connection for socket: ${socket.id}`);
   
   // Prefer tenant from handshake query param
@@ -471,4 +471,4 @@ export function chatSocket(io: Server) {
       socket.emit('error', { message: 'Internal server error' });
     }
   });
-} 
+}
