@@ -118,8 +118,21 @@ io.engine.on("connection_error", (err) => {
         return next(new Error('Authentication error: No token provided'));
       }
       try {
-        // Get tenant-aware User model
-        const { models } = await require('./sockets/chat').getTenantConnection(socket);
+        // Ensure tenant DB connection is established before checking token
+        const chatModule = require('./sockets/chat');
+        const tenantConn = await chatModule.getTenantConnection(socket);
+        if (!tenantConn || !tenantConn.sequelize) {
+          console.error('[Socket Auth] Tenant DB connection not established for socket:', socket.id);
+          return next(new Error('Authentication error: Tenant DB not connected'));
+        }
+        // Optionally, check connection state
+        try {
+          await tenantConn.sequelize.authenticate();
+        } catch (dbErr) {
+          console.error('[Socket Auth] DB authenticate() failed:', dbErr);
+          return next(new Error('Authentication error: DB not connected'));
+        }
+        const { models } = tenantConn;
         const user = await models.User.findOne({ where: { token } });
         if (!user) {
           return next(new Error('Authentication error: Invalid token'));
@@ -127,6 +140,7 @@ io.engine.on("connection_error", (err) => {
         socket.data.user = user;
         next();
       } catch (err) {
+        console.error('[Socket Auth] Unexpected error:', err);
         next(new Error('Authentication error: DB error'));
       }
     });
