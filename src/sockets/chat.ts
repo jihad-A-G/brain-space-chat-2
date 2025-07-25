@@ -211,7 +211,18 @@ export function chatSocket(io: Server) {
       console.log(`[SOCKET] User ${userId} joined room user_${userId}`);
       socket.join(`role_${socket.data.user.role}`);
       console.log(`[SOCKET] User ${userId} joined room role_${socket.data.user.role}`);
-
+    // Emit unread message count and hasUnread flag on connection
+    try {
+      const unreadCount = await ChatMessage.count({
+        where: {
+          receiver_id: userId,
+          is_read: false
+        },
+      });
+      socket.emit('unread_count', { count: unreadCount, hasUnread: unreadCount > 0 });
+    } catch (err) {
+      console.error('Failed to fetch unread count:', err);
+  }
       if (isFirstConnection) {
         console.log(`[SOCKET] First connection for user ${userId}, updating status to Online`);
         // Mark user as online in DB
@@ -226,6 +237,30 @@ export function chatSocket(io: Server) {
         } catch (updateError) {
           console.error(`[SOCKET ERROR] Failed to update user ${userId} status:`, updateError);
         }
+        socket.on('request_user_status_update', async () => {
+      try {
+        // Get all users with their current status from database
+        const users = await User.findAll({
+          attributes: ['id', 'status', 'last_seen'],
+          where: {
+            status: { [Op.ne]: null } // Only users with status
+          }
+        });
+
+        // Send current status of all users to requesting client
+        users.forEach(user => {
+          socket.emit('user_status_changed', {
+            userId: user.id,
+            status: user.status,
+            last_seen: user.last_seen
+          });
+        });
+
+        console.log(`Sent status updates for ${users.length} users to user ${userId}`);
+      } catch (err) {
+        console.error('Error sending user status updates:', err);
+      }
+    });
       }
 
     console.log(`Socket connected: ${socket.id}`);
@@ -426,63 +461,50 @@ export function chatSocket(io: Server) {
     });
 
     // Mark as read
-    socket.on('mark_read', async ({ messageId }) => {
-      // Enhanced bulk mark as read
-      // Accepts conversation_id, marks all unread messages as read for this user in the conversation
-      // Emits messages_read and updates unread count, supports callback
-      const userId = socket.data.user.id;
-      // Accept both messageId (legacy) and conversation_id (bulk)
-      if (typeof arguments[0] === 'object' && arguments[0].conversation_id) {
-        const { conversation_id } = arguments[0];
-        const callback = typeof arguments[1] === 'function' ? arguments[1] : undefined;
-        try {
-          // Mark all unread messages as read for this user in the conversation
-          const [updatedCount] = await ChatMessage.update(
-            { is_read: true },
-            {
-              where: {
-                conversation_id,
-                receiver_id: userId,
-                is_read: false,
-                deleted_by: { [Op.not]: { [Op.contains]: [userId] } },
-              },
-            }
-          );
-          // Optionally, fetch all message IDs that were updated
-          const updatedMessages = await ChatMessage.findAll({
+     socket.on('mark_read', async ({ conversation_id }, callback) => {
+      try {
+        const userId = socket.data.user.id;
+        if (!conversation_id) {
+          callback && callback({ success: false, error: 'conversation_id is required' });
+          return;
+        }
+        // Mark all unread messages as read for this user in the conversation
+        const [updatedCount] = await ChatMessage.update(
+          { is_read: true },
+          {
             where: {
               conversation_id,
-              receiver_id: userId,
-              is_read: true,
-            },
-            attributes: ['id'],
-          });
-          const messageIds = updatedMessages.map(msg => msg.id);
-          // Emit to all clients in the conversation
-          io.to(`conversation_${conversation_id}`).emit('messages_read', { conversation_id, userId, messageIds });
-          // Update unread count for the user
-          const unreadCount = await ChatMessage.count({
-            where: {
               receiver_id: userId,
               is_read: false,
               deleted_by: { [Op.not]: { [Op.contains]: [userId] } },
             },
-          });
-          io.to(`user_${userId}`).emit('unread_count', { count: unreadCount, hasUnread: unreadCount > 0 });
-          callback && callback({ success: true, data: { updatedCount, messageIds } });
-        } catch (err) {
-          console.error('Bulk mark_read error:', err);
-          callback && callback({ success: false, error: err as any });
-        }
-      } else {
-        // Legacy: mark a single message as read
-        const messageId = arguments[0]?.messageId || arguments[0];
-        const msg = await ChatMessage.findByPk(messageId);
-        if (msg && msg.receiver_id === userId) {
-          msg.is_read = true;
-          await msg.save();
-          io.to(`conversation_${msg.conversation_id}`).emit('message_read', { messageId, userId });
-        }
+          }
+        );
+        // Optionally, fetch all message IDs that were updated
+        const updatedMessages = await ChatMessage.findAll({
+          where: {
+            conversation_id,
+            receiver_id: userId,
+            is_read: true,
+          },
+          attributes: ['id'],
+        });
+        const messageIds = updatedMessages.map(msg => msg.id);
+        // Emit to all clients in the conversation
+        io.to(`conversation_${conversation_id}`).emit('messages_read', { conversation_id, userId, messageIds });
+        // Update unread count for the user
+        const unreadCount = await ChatMessage.count({
+          where: {
+            receiver_id: userId,
+            is_read: false,
+            deleted_by: { [Op.not]: { [Op.contains]: [userId] } },
+          },
+        });
+        io.to(`user_${userId}`).emit('unread_count', { count: unreadCount, hasUnread: unreadCount > 0 });
+        callback && callback({ success: true, data: { updatedCount, messageIds } });
+      } catch (err) {
+        console.error('Bulk mark_read error:', err);
+        callback && callback({ success: false, error: err as any });
       }
     });
 
@@ -493,13 +515,14 @@ export function chatSocket(io: Server) {
           sockets.delete(socket.id);
           if (sockets.size === 0) {
             onlineUsers.delete(userId);
+            const lastSeen = new Date();
             // Update last_seen and status in DB
             await User.update(
-              { last_seen: new Date(), status: 'Offline' },
+              { last_seen: lastSeen, status: 'Offline' },
               { where: { id: userId } }
             );
-            socket.broadcast.emit('user_offline', { userId, last_seen: new Date() });
-            io.emit('user_status_changed', { userId, status: 'Offline' });
+            io.emit('user_offline', { userId, last_seen: lastSeen });
+            io.emit('user_status_changed', { userId, status: 'Offline', last_seen: lastSeen });
             console.log(`User ${userId} disconnected. Socket: ${socket.id}`);
           }
           break;
@@ -507,7 +530,7 @@ export function chatSocket(io: Server) {
       }
     });
 
-    // Change user status
+    // Enhanced change status handler
     socket.on('change_status', async ({ status }) => {
       const userId = socket.data.user.id;
       const ALLOWED_STATUSES = ['online', 'busy', 'offline', 'away'];
@@ -515,15 +538,26 @@ export function chatSocket(io: Server) {
         socket.emit('error', { message: 'Invalid status' });
         return;
       }
-      const user = await User.findByPk(userId);
-      if (!user) {
-        socket.emit('error', { message: 'User not found' });
-        return;
+      try {
+        const updateData = {
+          status: status.charAt(0).toUpperCase() + status.slice(1), // Capitalize first letter
+          last_seen: status.toLowerCase() === 'online' ? null : new Date()
+        };
+
+        await User.update(updateData, { where: { id: userId } });
+
+        // Broadcast to ALL clients (including the sender)
+        io.emit('user_status_changed', { 
+          userId, 
+          status: updateData.status, 
+          last_seen: updateData.last_seen 
+        });
+        
+        console.log(`User ${userId} changed status to ${updateData.status} (via socket)`);
+      } catch (err) {
+        console.error('Error updating user status:', err);
+        socket.emit('error', { message: 'Failed to update status' });
       }
-      user.status = status;
-      await user.save();
-      io.emit('user_status_changed', { userId, status });
-      console.log(`User ${userId} changed status to ${status} (via socket)`);
     });
     
     } catch (error) {
