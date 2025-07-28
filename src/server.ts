@@ -14,7 +14,7 @@ import dotenv from 'dotenv';
 import  authMiddleware  from './middlewares/auth';
 import jwt from 'jsonwebtoken';
 import path from 'path';
-import { notifyUsers } from './controllers/chatController';
+import { broadcastRefresh, notifyUsers } from './controllers/chatController';
 import { getJwt } from './controllers/userController';
 import tenantSequelizeMiddleware from './middlewares/tenantSequelize';
 dotenv.config();
@@ -70,6 +70,7 @@ app.use(tenantSequelizeMiddleware);
 app.post('/api/notify', notifyUsers);
 app.post('/api/users/jwt', getJwt);
 app.use(authMiddleware);
+app.post('/api/broadcast-refresh', broadcastRefresh)
 app.use('/api/users', userRoutes);
 app.use('/api/chats', chatRoutes);
 

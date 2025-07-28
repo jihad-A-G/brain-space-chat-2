@@ -469,3 +469,13 @@ export async function notifyUsers(req: Request, res: Response) {
     res.status(500).json({ message: 'Error sending notification', error: err });
   }
 }
+
+export const broadcastRefresh = (req: Request, res: Response) => {
+  try {
+    const io = getIO();
+    io.emit('refresh', {});
+    res.json({ message: 'Refresh broadcasted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Error broadcasting refresh', error: err });
+  }
+}
