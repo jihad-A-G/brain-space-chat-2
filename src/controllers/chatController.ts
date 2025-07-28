@@ -471,9 +471,10 @@ export async function notifyUsers(req: Request, res: Response) {
 }
 
 export const broadcastRefresh = (req: Request, res: Response) => {
+  const {url} = req.body;
   try {
     const io = getIO();
-    io.emit('refresh', {});
+    io.emit('refresh', {url});
     res.json({ message: 'Refresh broadcasted' });
   } catch (err) {
     res.status(500).json({ message: 'Error broadcasting refresh', error: err });
