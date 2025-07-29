@@ -48,3 +48,25 @@ export async function getJwt(req: Request, res: Response) {
     res.status(500).json({ message: 'Error issuing JWT', error: errorMessage });
   }
 }
+
+// Update user's allow_notification field
+export async function updateAllowNotification(req: Request, res: Response) {
+  const { userId, allow_notification } = req.body;
+  if (typeof allow_notification !== 'boolean') {
+    return res.status(400).json({ error: 'allow_notification must be boolean' });
+  }
+  try {
+    // @ts-ignore
+    const { User } = req.tenant.models;
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    user.allow_notification = allow_notification;
+    await user.save();
+    res.json({ success: true, user });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ message: 'Error updating notification setting', error: errorMessage });
+  }
+}

@@ -69,8 +69,8 @@ app.get('/health', (req, res) => {
 app.use(tenantSequelizeMiddleware);
 app.post('/api/notify', notifyUsers);
 app.post('/api/users/jwt', getJwt);
-app.use(authMiddleware);
 app.post('/api/broadcast-refresh', broadcastRefresh)
+app.use(authMiddleware);
 app.use('/api/users', userRoutes);
 app.use('/api/chats', chatRoutes);
 

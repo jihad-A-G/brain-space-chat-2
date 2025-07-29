@@ -19,6 +19,7 @@ interface UserAttributes {
   language_id: number;
   last_seen?: Date | null;
   status?: string | null;
+  allow_notification: boolean;
 }
 
 interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'main_image' | 'secret_key' | 'last_seen' | 'status'> {}
@@ -40,6 +41,7 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   public language_id!: number;
   public last_seen?: Date | null;
   public status?: string | null;
+  public allow_notification!: boolean;
 }
 
 export function defineUserModel(sequelize: Sequelize) {
@@ -111,6 +113,10 @@ export function defineUserModel(sequelize: Sequelize) {
         type: DataTypes.STRING,
         allowNull: true,
       },
+      allow_notification : {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      }
     },
     {
       sequelize,

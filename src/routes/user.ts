@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { getUsers, getJwt } from '../controllers/userController';
+import { getUsers, getJwt, updateAllowNotification } from '../controllers/userController';
 
 const router = Router();
 
-router.get('/', getUsers);  
+router.get('/', getUsers); 
+router.put('/update-allow-notification', updateAllowNotification);
 export default router;
