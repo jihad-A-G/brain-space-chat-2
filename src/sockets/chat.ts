@@ -232,8 +232,8 @@ export function chatSocket(io: Server) {
             { status: 'Online', last_seen: null },
             { where: { id: userId } }
           );
-          console.log(`[SOCKET] Successfully updated user ${username?.dataValues.user_name} (${userId}) status to Online`);
-          socket.broadcast.emit('user_online', { userId, username: username?.dataValues.user_name });
+          console.log(`[SOCKET] Successfully updated user ${username?.dataValues.name} (${userId}) status to Online`);
+          socket.broadcast.emit('user_online', { userId, username: username?.dataValues.name });
           io.emit('user_status_changed', { userId, status: 'Online' });
         } catch (updateError) {
           console.error(`[SOCKET ERROR] Failed to update user ${userId} status:`, updateError);
@@ -524,7 +524,7 @@ export function chatSocket(io: Server) {
               { last_seen: lastSeen, status: 'Offline' },
               { where: { id: userId } }
             );
-            io.emit('user_offline', { userId, last_seen: lastSeen, username: username?.dataValues.user_name });
+            io.emit('user_offline', { userId, last_seen: lastSeen, username: username?.dataValues.name });
             io.emit('user_status_changed', { userId, status: 'Offline', last_seen: lastSeen });
             console.log(`User ${userId} disconnected. Socket: ${socket.id}`);
           }
