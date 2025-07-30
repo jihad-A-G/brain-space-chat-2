@@ -227,12 +227,13 @@ export function chatSocket(io: Server) {
         console.log(`[SOCKET] First connection for user ${userId}, updating status to Online`);
         // Mark user as online in DB
         try {
+          const username = await User.findByPk(userId, { attributes: ['user_name'] });
           await User.update(
             { status: 'Online', last_seen: null },
             { where: { id: userId } }
           );
           console.log(`[SOCKET] Successfully updated user ${userId} status to Online`);
-          socket.broadcast.emit('user_online', { userId });
+          socket.broadcast.emit('user_online', { userId, username });
           io.emit('user_status_changed', { userId, status: 'Online' });
         } catch (updateError) {
           console.error(`[SOCKET ERROR] Failed to update user ${userId} status:`, updateError);
@@ -516,12 +517,13 @@ export function chatSocket(io: Server) {
           if (sockets.size === 0) {
             onlineUsers.delete(userId);
             const lastSeen = new Date();
+            const username = await User.findByPk(userId, { attributes: ['user_name'] });
             // Update last_seen and status in DB
             await User.update(
               { last_seen: lastSeen, status: 'Offline' },
               { where: { id: userId } }
             );
-            io.emit('user_offline', { userId, last_seen: lastSeen });
+            io.emit('user_offline', { userId, last_seen: lastSeen, username });
             io.emit('user_status_changed', { userId, status: 'Offline', last_seen: lastSeen });
             console.log(`User ${userId} disconnected. Socket: ${socket.id}`);
           }
