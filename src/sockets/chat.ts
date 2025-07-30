@@ -518,6 +518,8 @@ export function chatSocket(io: Server) {
             onlineUsers.delete(userId);
             const lastSeen = new Date();
             const username = await User.findByPk(userId, { attributes: ['user_name'] });
+            console.log(`User ${username} (${userId}) went offline at ${lastSeen}`);
+
             // Update last_seen and status in DB
             await User.update(
               { last_seen: lastSeen, status: 'Offline' },
