@@ -227,7 +227,7 @@ export function chatSocket(io: Server) {
         console.log(`[SOCKET] First connection for user ${userId}, updating status to Online`);
         // Mark user as online in DB
         try {
-          const username = await User.findByPk(userId, { attributes: ['user_name'] });
+          const username = await User.findByPk(userId, { attributes: ['name'] });
           await User.update(
             { status: 'Online', last_seen: null },
             { where: { id: userId } }
@@ -517,7 +517,7 @@ export function chatSocket(io: Server) {
           if (sockets.size === 0) {
             onlineUsers.delete(userId);
             const lastSeen = new Date();
-            const username = await User.findByPk(userId, { attributes: ['user_name'] });
+            const username = await User.findByPk(userId, { attributes: ['name'] });
 
             // Update last_seen and status in DB
             await User.update(
