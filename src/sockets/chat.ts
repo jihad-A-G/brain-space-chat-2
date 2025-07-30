@@ -232,7 +232,7 @@ export function chatSocket(io: Server) {
             { status: 'Online', last_seen: null },
             { where: { id: userId } }
           );
-          console.log(`[SOCKET] Successfully updated user ${userId} status to Online`);
+          console.log(`[SOCKET] Successfully updated user ${username?.dataValues.user_name} (${userId}) status to Online`);
           socket.broadcast.emit('user_online', { userId, username: username?.dataValues.user_name });
           io.emit('user_status_changed', { userId, status: 'Online' });
         } catch (updateError) {
